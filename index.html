@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TAV — Transpes Agenda de Vistorias</title>
+  <link rel="icon" type="image/svg+xml" href="assets/icon-blockquote.svg?v=2">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div class="app">
+
+    <header class="header">
+      <h1 class="icone-transpes"></h1> <img src="assets/logo.svg" alt="Logo da Transpes"> </h1>
+      <h2 class="header__title">TAV <span class="header__title-sub">- Transpes Agenda de Vistorias</span></h2>
+      <!-- <span class="header__tag">diário de campo</span> -->
+    </header>
+
+    <main class="layout">
+
+      <!-- Ordem de serviço: formulário de novo agendamento -->
+     <section class="work-order" aria-labelledby="form-title">
+        <h2 id="form-title" class="work-order__title">Novo Agendamento de vistória</h2>
+
+        <form id="form-agendamento" class="form" novalidate>
+
+          <div class="field">
+            <label for="vistoriador">Vistoriador</label>
+            <select id="vistoriador">
+              <option value="">Selecione...</option>
+              <option>Donizete da Silva</option>
+              <option>Carlos Hurtado</option>
+              <option>Lauro Lage</option>
+          </select>
+          </div>
+
+          <div class="field">
+            <label for="cliente">Cliente</label>
+            <input type="text" id="cliente" name="cliente" placeholder="Nome do cliente" autocomplete="off">
+          </div>
+
+           <div class="field">
+            <label for="maps-link">Link da rota (Google Maps)</label>
+            <div class="field-with-button">
+              <input type="url" id="maps-link" name="maps-link" placeholder="Cole aqui o link completo do Google Maps" autocomplete="off">
+              <button type="button" id="btn-extrair" class="btn-secondary">Extrair</button>
+            </div>
+            <p id="maps-link-hint" class="field-hint" hidden>Não foi possível extrair a rota desse link. Preencha origem e destino manualmente.</p>
+          </div>
+ 
+          <div class="field-row">
+            <div class="field">
+              <label for="origem">Origem</label>
+              <input type="text" id="origem" name="origem" placeholder="Endereço de origem" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="destino">Destino</label>
+              <input type="text" id="destino" name="destino" placeholder="Endereço de destino" autocomplete="off">
+            </div>
+          </div>
+ 
+          <div class="field">
+            <label for="desenho-carregamento">Desenho de carregamento</label>
+            <input type="url" id="desenho-carregamento" name="desenho-carregamento" placeholder="Cole aqui o link do desenho de carregamento" autocomplete="off">
+          </div>
+
+          <div class="field">
+            <label for="status-vistoria">Status</label>
+            <select id="status-vistoria" name="status-vistoria">
+              <option value="A Inicar">A Inicar</option>
+              <option value="Finalizado">Finalizado</option>
+              <option value="Em Execução">Em Execução</option>
+              <option value="Cancelado">Cancelado</option>
+              <option value="Interrompido">Interrompido</option>
+            </select>
+          </div>
+
+          <div class="field" id="campo-motivo" hidden>
+            <label for="motivo-status">Motivo</label>
+            <textarea id="motivo-status" name="motivo-status" rows="3" placeholder="Descreva o motivo do encerramento"></textarea>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="inicio">Início</label>
+              <input type="date" id="inicio" name="inicio">
+            </div>
+            <div class="field">
+              <label for="fim">Término</label>
+              <input type="date" id="fim" name="fim">
+            </div>
+          </div>
+ 
+          <button type="submit" class="btn-submit">Agendar</button>
+ 
+          <div id="conflict-box" class="conflict-box" role="alert" hidden>
+            <strong id="conflict-title">Conflito de agenda</strong>
+            <p id="conflict-message"></p>
+          </div>
+ 
+          <div id="success-box" class="success-box" role="status" hidden>
+            Agendamento confirmado.
+          </div>
+ 
+        </form>
+      </section>
+ 
+      <!-- Mural: lista de vistoriadores e seus agendamentos -->
+      <section class="board" aria-label="Agendamentos por vistoriador">
+        <p class="board__hint">Clique no nome do vistoriador para ver os agendamentos.</p>
+
+        <div id="board-empty" class="board__empty">
+          Nenhum agendamento ainda. Preencha a ordem de serviço ao lado para começar.
+        </div>
+ 
+        <div id="board-list" class="board__list">
+          <!-- linhas de vistoriador (template em js/app.js) serão inseridas aqui -->
+        </div>
+      </section>
+ 
+    </main>
+ 
+    <div id="stamp" class="stamp" aria-hidden="true">OCUPADO</div>
+ 
+  </div>
+ 
+  <script src="js/app.js"></script>
+</body>
+</html>
