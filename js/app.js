@@ -31,8 +31,55 @@ const stamp = document.getElementById("stamp");
 const mapsHint = document.getElementById("maps-link-hint");
 
 // ---------- BANCO ----------
-let agendamentos =
-    JSON.parse(localStorage.getItem("tav-agendamentos")) || [];
+let agendamentos = [];
+
+function codificarEstadoAgenda(valor) {
+    const texto = JSON.stringify(valor);
+    const bytes = new TextEncoder().encode(texto);
+    let binario = "";
+
+    bytes.forEach(byte => {
+        binario += String.fromCharCode(byte);
+    });
+
+    return btoa(binario);
+}
+
+function decodificarEstadoAgenda(valor) {
+    const binario = atob(valor);
+    const bytes = Uint8Array.from(binario, caractere => caractere.charCodeAt(0));
+    const texto = new TextDecoder().decode(bytes);
+    return JSON.parse(texto);
+}
+
+function sincronizarUrlComAgendamentos() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("agenda", codificarEstadoAgenda(agendamentos));
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function carregarAgendamentos() {
+    const params = new URLSearchParams(window.location.search);
+    const agendaParam = params.get("agenda");
+
+    if (agendaParam) {
+        try {
+            const dados = decodificarEstadoAgenda(agendaParam);
+            agendamentos = Array.isArray(dados) ? dados : [];
+        } catch (error) {
+            agendamentos = [];
+        }
+    } else {
+        const dadosLocais = JSON.parse(localStorage.getItem("tav-agendamentos") || "[]");
+        agendamentos = Array.isArray(dadosLocais) ? dadosLocais : [];
+    }
+
+    if (!agendaParam && agendamentos.length > 0) {
+        sincronizarUrlComAgendamentos();
+    }
+
+    renderizarBoard();
+}
 
 // ---------- BACK-END / INTEGRAÇÃO COM EXCEL ONLINE (SHAREPOINT) ----------
 // Preencha com um endpoint que devolva um JSON simples com a última localização.
@@ -53,7 +100,7 @@ function obterPlanilhaLocalizacao(vistoriador) {
 // ---------- EVENTOS ----------
 
 document.addEventListener("DOMContentLoaded", () => {
-    renderizarBoard();
+    carregarAgendamentos();
 });
 
 btnExtrair.addEventListener("click", extrairRota);
@@ -422,11 +469,16 @@ function criarAgendamento(item) {
     colDesenho.className = "agenda-item__col";
 
     const desenho = document.createElement("p");
-    desenho.innerHTML = item.desenhoCarregamento
-        ? `<strong>Desenho de carregamento:</strong><br><a class="agenda-item__link" href="${item.desenhoCarregamento}" target="_blank" rel="noopener noreferrer">${item.desenhoCarregamento}</a>`
+    const desenhoUrl = item.desenhoCarregamento ? item.desenhoCarregamento.replace(/"/g, "") : "";
+    desenho.innerHTML = desenhoUrl
+        ? `<strong>Desenho de carregamento:</strong><br><a class="agenda-item__link" href="${desenhoUrl}" target="_blank" rel="noopener noreferrer">abrir desenho</a>`
         : "<strong>Desenho de carregamento:</strong><br>Não informado";
 
+    const ultimaLocalizacao = document.createElement("p");
+    ultimaLocalizacao.innerHTML = "<strong>Última localização:</strong><br>Carregando...";
+
     colDesenho.appendChild(desenho);
+    colDesenho.appendChild(ultimaLocalizacao);
 
     const colObservacoes = document.createElement("div");
     colObservacoes.className = "agenda-item__col";
@@ -539,7 +591,6 @@ function criarAgendamento(item) {
 
         motivoInput.hidden = !["Finalizado", "Cancelado", "Interrompido"].includes(item.status);
         salvar();
-        renderizarBoard();
     });
 
     statusEditor.appendChild(statusLabel);
@@ -548,12 +599,8 @@ function criarAgendamento(item) {
     motivoWrapper.appendChild(motivoLabel);
     motivoWrapper.appendChild(motivoInput);
 
-    const ultimaLocalizacao = document.createElement("p");
-    ultimaLocalizacao.innerHTML = "<strong>Última localização:</strong><br>Carregando...";
-
     statusColumn.appendChild(statusEditor);
     statusColumn.appendChild(motivoWrapper);
-    statusColumn.appendChild(ultimaLocalizacao);
 
     card.appendChild(content);
     card.appendChild(statusColumn);
@@ -614,12 +661,12 @@ function buscarAgendamentosPorVistoriador(nome) {
 // ---------- LOCAL STORAGE ----------
 
 function salvar() {
-
     localStorage.setItem(
         "tav-agendamentos",
         JSON.stringify(agendamentos)
     );
 
+    sincronizarUrlComAgendamentos();
 }
 
 // ---------- MENSAGENS ----------
