@@ -43,6 +43,16 @@ body {
   position: relative;
 }
 
+.app-shell {
+  display: block;
+}
+
+.app-shell.is-hidden,
+.auth-screen.is-hidden,
+.is-hidden {
+  display: none !important;
+}
+
 /* ---------- Header ---------- */
 
 .header {
@@ -54,7 +64,14 @@ body {
   border-bottom: 2px dashed var(--blueprint-grid-strong);
   padding-bottom: 16px;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
+}
+
+.header__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .header__title {
@@ -98,6 +115,152 @@ body {
   .layout {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- Auth card ---------- */
+
+.auth-screen {
+  min-height: calc(100vh - 60px);
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.auth-card {
+  width: min(100%, 520px);
+  background: linear-gradient(135deg, rgba(244, 240, 230, 0.98), rgba(255, 255, 255, 0.95));
+  color: var(--ink);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(22, 50, 79, 0.08);
+}
+
+.auth-card__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.auth-card__mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.auth-card__brand h3 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  color: var(--ink);
+}
+
+.auth-card__eyebrow {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rust);
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-field {
+  display: grid;
+  gap: 6px;
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.auth-field input {
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid rgba(27, 39, 51, 0.2);
+  border-radius: 10px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.auth-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.btn-submit--auth {
+  width: auto;
+  min-width: 120px;
+  margin-top: 0;
+  border-radius: 999px;
+}
+
+.btn-link {
+  background: transparent;
+  border: none;
+  color: var(--teal);
+  cursor: pointer;
+  font-family: var(--font-data);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0;
+}
+
+.btn-secondary--ghost {
+  border-color: var(--white);
+  color: white;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-weight: 600;
+  background: rgba(193, 68, 14, 0.08);
+}
+
+.btn-secondary--ghost:hover {
+  background: var(--rust);
+  color: var(--paper);
+}
+
+.auth-status {
+  margin: 12px 0 3px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.auth-status--warning {
+  color: var(--rust);
+}
+
+.auth-status--success {
+  color: var(--teal);
+}
+
+.auth-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.form.is-locked {
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 /* ---------- Work order (form card) ---------- */
@@ -207,7 +370,7 @@ textarea:focus {
   padding: 0 14px;
   background: transparent;
   border: 1px solid var(--ink);
-  color: var(--ink);
+  /*color: rgb(0, 0, 0);*/
   border-radius: 2px;
   font-family: var(--font-data);
   font-size: 12px;
@@ -479,7 +642,7 @@ textarea:focus {
   border: 1px solid rgba(244, 240, 230, 0.16);
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.08);
-  color: black;
+  color: var(--gold);
   font-family: var(--font-body);
   font-size: 12px;
 }

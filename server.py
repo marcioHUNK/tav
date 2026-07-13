@@ -1,5 +1,7 @@
 import json
 import os
+import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
@@ -71,6 +73,28 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == '/api/agendamentos':
             self._set_json(200, read_agendamentos())
+            return
+        if parsed.path == '/api/ultima-localizacao':
+            query = urllib.parse.parse_qs(parsed.query)
+            url_planilha = query.get('url', [''])[0]
+            if not url_planilha:
+                self._set_json(400, {'error': 'Missing url'})
+                return
+            url_planilha = urllib.parse.unquote(url_planilha)
+            req = urllib.request.Request(url_planilha, headers={
+                'User-Agent': 'Mozilla/5.0',
+                'Accept': 'text/plain, text/csv, application/json, application/octet-stream, */*'
+            })
+            try:
+                with urllib.request.urlopen(req) as response:
+                    body = response.read().decode('utf-8', errors='ignore')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain; charset=utf-8')
+                self.send_header('Content-Length', str(len(body.encode('utf-8'))))
+                self.end_headers()
+                self.wfile.write(body.encode('utf-8'))
+            except Exception as exc:
+                self._set_json(502, {'error': str(exc)})
             return
         self._serve_file(parsed.path)
 

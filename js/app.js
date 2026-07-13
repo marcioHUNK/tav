@@ -1,4 +1,22 @@
 
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+import {
+    collection,
+    deleteDoc,
+    doc,
+    getDocs,
+    getFirestore,
+    onSnapshot,
+    setDoc
+} from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+import {
+    createUserWithEmailAndPassword,
+    getAuth,
+    onAuthStateChanged,
+    signInWithEmailAndPassword,
+    signOut
+} from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+
 const form = document.getElementById("form-agendamento");
 
 const vistoriadorInput = document.getElementById("vistoriador");
@@ -29,9 +47,178 @@ const successBox = document.getElementById("success-box");
 const stamp = document.getElementById("stamp");
 
 const mapsHint = document.getElementById("maps-link-hint");
+const authForm = document.getElementById("auth-form");
+const authEmailInput = document.getElementById("auth-email");
+const authPasswordInput = document.getElementById("auth-password");
+const authStatus = document.getElementById("auth-status");
+const authModeToggle = document.getElementById("auth-mode-toggle");
+const authSubmitButton = document.getElementById("auth-submit");
+const btnLogout = document.getElementById("btn-logout");
+const authHint = document.getElementById("auth-hint");
+const loginScreen = document.getElementById("login-screen");
+const appShell = document.getElementById("app-shell");
+
+const firebaseConfig = {
+    apiKey: "AIzaSyCSDobi2Sq0YE8hKc_DhBvtZp-jZJ2lOfk",
+    authDomain: "tav-transpes.firebaseapp.com",
+    projectId: "tav-transpes",
+    storageBucket: "tav-transpes.firebasestorage.app",
+    messagingSenderId: "670362386770",
+    appId: "1:670362386770:web:c9ea1f8496fe8e0b70ba8b"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
 
 // ---------- BANCO ----------
 let agendamentos = [];
+let unsubscribeAgendamentos = null;
+let firestorePronto = false;
+let currentUser = null;
+let modoCadastro = false;
+
+function atualizarInterfaceAutenticacao(user) {
+    currentUser = user;
+
+    const campos = [vistoriadorInput, clienteInput, mapsInput, origemInput, destinoInput, desenhoCarregamentoInput, statusInput, motivoInput, inicioInput, fimInput, btnExtrair, form.querySelector('button[type="submit"]')];
+
+    campos.forEach(campo => {
+        if (campo) {
+            campo.disabled = !user;
+        }
+    });
+
+    if (!user) {
+        loginScreen.classList.remove("is-hidden");
+        loginScreen.hidden = false;
+        appShell.classList.add("is-hidden");
+        appShell.hidden = true;
+        form.classList.add("is-locked");
+        authHint.hidden = false;
+        authStatus.textContent = "Entre para salvar, editar e sincronizar os agendamentos.";
+        authStatus.className = "auth-status auth-status--warning";
+        btnLogout.hidden = true;
+        authSubmitButton.textContent = "Entrar";
+        authModeToggle.textContent = "Criar conta";
+        authModeToggle.dataset.mode = "login";
+        mostrarErro("Faça login para criar ou alterar agendamentos.");
+    } else {
+        loginScreen.classList.add("is-hidden");
+        loginScreen.hidden = true;
+        appShell.classList.remove("is-hidden");
+        appShell.hidden = false;
+        form.classList.remove("is-locked");
+        authHint.hidden = true;
+        authStatus.textContent = `Conectado como ${user.email}`;
+        authStatus.className = "auth-status auth-status--success";
+        btnLogout.hidden = false;
+        authSubmitButton.textContent = modoCadastro ? "Criar conta" : "Entrar";
+        authModeToggle.textContent = modoCadastro ? "Já tenho conta" : "Criar conta";
+        authModeToggle.dataset.mode = modoCadastro ? "signup" : "login";
+        esconderMensagens();
+    }
+}
+
+async function autenticar(event) {
+    event.preventDefault();
+
+    const email = authEmailInput.value.trim();
+    const senha = authPasswordInput.value.trim();
+
+    if (!email || !senha) {
+        authStatus.textContent = "Informe e-mail e senha para continuar.";
+        authStatus.className = "auth-status auth-status--warning";
+        return;
+    }
+
+    try {
+        if (modoCadastro) {
+            await createUserWithEmailAndPassword(auth, email, senha);
+        } else {
+            await signInWithEmailAndPassword(auth, email, senha);
+        }
+
+        authForm.reset();
+    } catch (error) {
+        console.error("Erro ao autenticar:", error);
+        authStatus.textContent = error.message || "Não foi possível concluir a autenticação.";
+        authStatus.className = "auth-status auth-status--warning";
+    }
+}
+
+async function sair() {
+    try {
+        await signOut(auth);
+        authForm.reset();
+        authStatus.textContent = "Você saiu. Faça login novamente para acessar a agenda.";
+        authStatus.className = "auth-status auth-status--warning";
+    } catch (error) {
+        console.error("Erro ao sair:", error);
+    }
+}
+
+function alternarModoAuth() {
+    modoCadastro = !modoCadastro;
+    authSubmitButton.textContent = modoCadastro ? "Criar conta" : "Entrar";
+    authModeToggle.textContent = modoCadastro ? "Já tenho conta" : "Criar conta";
+    authModeToggle.dataset.mode = modoCadastro ? "signup" : "login";
+    authStatus.textContent = modoCadastro
+        ? "Crie uma conta para proteger a agenda." 
+        : "Entre para salvar e sincronizar os agendamentos.";
+    authStatus.className = modoCadastro ? "auth-status auth-status--warning" : "auth-status auth-status--warning";
+}
+
+async function inicializarFirebase() {
+    try {
+        firestorePronto = Boolean(db);
+
+        if (!firestorePronto) {
+            throw new Error("Firestore não inicializado.");
+        }
+
+        if (unsubscribeAgendamentos) {
+            unsubscribeAgendamentos();
+            unsubscribeAgendamentos = null;
+        }
+
+        onAuthStateChanged(auth, user => {
+            atualizarInterfaceAutenticacao(user);
+
+            if (!user) {
+                if (unsubscribeAgendamentos) {
+                    unsubscribeAgendamentos();
+                    unsubscribeAgendamentos = null;
+                }
+                carregarAgendamentos();
+                return;
+            }
+
+            unsubscribeAgendamentos = onSnapshot(
+                collection(db, "agendamentos"),
+                snapshot => {
+                    const dados = snapshot.docs
+                        .map(item => ({ id: item.id, ...item.data() }))
+                        .filter(item => item && item.vistoriador && (!item.createdBy || item.createdBy === user.uid));
+
+                    agendamentos = dados;
+                    renderizarBoard();
+                    atualizarCoresCards();
+                    localStorage.setItem("tav-agendamentos", JSON.stringify(agendamentos));
+                    sincronizarUrlComAgendamentos();
+                },
+                error => {
+                    console.error("Erro ao sincronizar com Firestore:", error);
+                }
+            );
+
+            carregarAgendamentos();
+        });
+    } catch (error) {
+        console.error("Falha ao conectar ao Firebase:", error);
+        carregarAgendamentos();
+    }
+}
 
 function codificarEstadoAgenda(valor) {
     const texto = JSON.stringify(valor);
@@ -70,8 +257,12 @@ function carregarAgendamentos() {
             agendamentos = [];
         }
     } else {
-        const dadosLocais = JSON.parse(localStorage.getItem("tav-agendamentos") || "[]");
-        agendamentos = Array.isArray(dadosLocais) ? dadosLocais : [];
+        try {
+            const dadosLocais = JSON.parse(localStorage.getItem("tav-agendamentos") || "[]");
+            agendamentos = Array.isArray(dadosLocais) ? dadosLocais : [];
+        } catch (error) {
+            agendamentos = [];
+        }
     }
 
     if (!agendaParam && agendamentos.length > 0) {
@@ -79,6 +270,7 @@ function carregarAgendamentos() {
     }
 
     renderizarBoard();
+    atualizarCoresCards();
 }
 
 // ---------- BACK-END / INTEGRAÇÃO COM EXCEL ONLINE (SHAREPOINT) ----------
@@ -86,9 +278,9 @@ function carregarAgendamentos() {
 // Exemplo esperado:
 // { "ultimaLocalizacao": "São Paulo - 10:45" }
 const endpointsPorVistoriador = {
-    "Donizete da Silva": "",
-    "Carlos Hurtado": "",
-    "Lauro Lage": "",
+    "Donizete da Silva": "https://transpes.sharepoint.com/:x:/s/cargaespecial/IQA0zSBHf0ONSK_8QPmA0HNpAd0wcAinyMfrxKy7J4fsqqM?e=eRCTgM",
+    "Carlos Hurtado": "https://transpes.sharepoint.com/:x:/s/cargaespecial/IQAq3bT8bCyDQJPn8ZBCgQp4AS_31UhYYmOT71pi5V3urug?e=nSoyq1",
+    "Lauro Lage": "https://transpes.sharepoint.com/:x:/s/cargaespecial/IQBArFdaQf9aQrwXFzJmc0qJAR4Nkk5ydBNEEVnS36nLoh4?e=UfFn6Z",
     "Márcio Carvalho": "",
     "Frank Landes": ""
 };
@@ -100,12 +292,15 @@ function obterPlanilhaLocalizacao(vistoriador) {
 // ---------- EVENTOS ----------
 
 document.addEventListener("DOMContentLoaded", () => {
-    carregarAgendamentos();
+    inicializarFirebase();
 });
 
 btnExtrair.addEventListener("click", extrairRota);
 statusInput.addEventListener("change", alternarCampoMotivo);
 form.addEventListener("submit", cadastrarAgendamento);
+authForm.addEventListener("submit", autenticar);
+authModeToggle.addEventListener("click", alternarModoAuth);
+btnLogout.addEventListener("click", sair);
 
 // =====================================
 // CADASTRAR AGENDAMENTO
@@ -116,6 +311,11 @@ function cadastrarAgendamento(e) {
     e.preventDefault();
 
     esconderMensagens();
+
+    if (!currentUser) {
+        mostrarErro("Faça login para criar ou alterar agendamentos.");
+        return;
+    }
 
     const vistoriador = vistoriadorInput.value.trim();
     const cliente = clienteInput.value.trim();
@@ -174,6 +374,9 @@ function cadastrarAgendamento(e) {
         planilhaLocalizacao,
 
         observacoes,
+
+        createdBy: currentUser.uid,
+        createdAt: new Date().toISOString(),
 
         inicio,
 
@@ -625,6 +828,13 @@ function criarAgendamento(item) {
 
 function removerAgendamento(id) {
 
+    const item = agendamentos.find(agenda => agenda.id === id);
+
+    if (!currentUser || item?.createdBy !== currentUser.uid) {
+        mostrarErro("Você só pode excluir agendamentos criados pela sua conta.");
+        return;
+    }
+
     agendamentos = agendamentos.filter(item => {
 
         return item.id !== id;
@@ -660,13 +870,37 @@ function buscarAgendamentosPorVistoriador(nome) {
 
 // ---------- LOCAL STORAGE ----------
 
-function salvar() {
+async function salvar() {
     localStorage.setItem(
         "tav-agendamentos",
         JSON.stringify(agendamentos)
     );
 
     sincronizarUrlComAgendamentos();
+
+    if (!firestorePronto || !db || !currentUser) {
+        return;
+    }
+
+    try {
+        const snapshot = await getDocs(collection(db, "agendamentos"));
+        const idsAtuais = new Set(agendamentos.map(item => item.id));
+        const promessas = [];
+
+        snapshot.docs.forEach(documento => {
+            if (!idsAtuais.has(documento.id)) {
+                promessas.push(deleteDoc(doc(db, "agendamentos", documento.id)));
+            }
+        });
+
+        agendamentos.forEach(item => {
+            promessas.push(setDoc(doc(db, "agendamentos", item.id), item));
+        });
+
+        await Promise.all(promessas);
+    } catch (error) {
+        console.error("Erro ao salvar agendamentos no Firestore:", error);
+    }
 }
 
 // ---------- MENSAGENS ----------
@@ -1051,17 +1285,87 @@ function normalizarUrlPlanilha(url) {
 
     if (valor.includes("/Shared%20Documents/") || valor.includes("/Documents/")) {
 
-        return valor;
+        return valor.includes("download=1") ? valor : `${valor}${valor.includes("?") ? "&" : "?"}download=1`;
     }
 
     if (valor.includes("/workbook/")) {
 
-        return valor;
+        return valor.includes("download=1") ? valor : `${valor}${valor.includes("?") ? "&" : "?"}download=1`;
+    }
 
+    if (valor.includes("sharepoint.com") && valor.includes(":x:")) {
+
+        return `${valor}${valor.includes("?") ? "&" : "?"}download=1`;
     }
 
     return valor;
 
+}
+
+function converterRespostaParaTexto(resposta) {
+    return resposta.text ? resposta.text() : Promise.resolve(String(resposta || ""));
+}
+
+function construirUrlsProxy(caminho) {
+    const candidatos = [];
+
+    if (typeof window !== "undefined" && window.location) {
+        if (window.location.origin && window.location.origin !== "null") {
+            candidatos.push(new URL(caminho, window.location.href).toString());
+        }
+
+        if (window.location.protocol === "file:") {
+            candidatos.push(`http://127.0.0.1:3000${caminho}`);
+            candidatos.push(`http://localhost:3000${caminho}`);
+        } else {
+            const host = window.location.hostname || "127.0.0.1";
+            candidatos.push(`http://${host}:3000${caminho}`);
+            candidatos.push(`http://127.0.0.1:3000${caminho}`);
+            candidatos.push(`http://localhost:3000${caminho}`);
+        }
+    }
+
+    return [...new Set(candidatos)];
+}
+
+async function buscarConteudoPlanilha(urlPlanilha) {
+    const urlsParaTentar = [
+        ...construirUrlsProxy(`/api/ultima-localizacao?url=${encodeURIComponent(urlPlanilha)}`),
+        ...construirUrlsProxy(`/api/ultima-localizacao?url=${encodeURIComponent(urlPlanilha.replace(/download=1/i, ""))}`),
+        ...construirUrlsProxy(`/api/ultima-localizacao?url=${encodeURIComponent(urlPlanilha.replace(/&download=1/i, ""))}`)
+    ];
+
+    for (const url of urlsParaTentar) {
+        try {
+            const respostaProxy = await fetch(url, {
+                headers: {
+                    "Accept": "application/json, text/plain, */*"
+                }
+            });
+
+            if (respostaProxy.ok) {
+                const texto = await respostaProxy.text();
+                if (texto && texto.trim()) {
+                    return texto;
+                }
+            }
+        } catch {
+            // tenta a próxima URL
+        }
+    }
+
+    const resposta = await fetch(urlPlanilha, {
+        headers: {
+            "Accept": "application/json, text/plain, */*"
+        }
+    });
+
+    if (!resposta.ok) {
+        const detalhe = await resposta.text().catch(() => "");
+        throw new Error(`Falha ao acessar a planilha (${resposta.status}): ${detalhe || "sem detalhes"}`);
+    }
+
+    return await resposta.text();
 }
 
 async function carregarUltimaLocalizacao(item, elemento) {
@@ -1079,19 +1383,7 @@ async function carregarUltimaLocalizacao(item, elemento) {
 
     try {
 
-        const resposta = await fetch(urlPlanilha, {
-            headers: {
-                "Accept": "application/json, text/plain, */*"
-            }
-        });
-
-        if (!resposta.ok) {
-
-            throw new Error("Falha ao acessar a planilha");
-
-        }
-
-        const texto = await resposta.text();
+        const texto = await buscarConteudoPlanilha(urlPlanilha);
         let ultimaLocalizacao = "Sem dados";
 
         if (texto.includes("<") && texto.includes("html")) {
@@ -1131,9 +1423,10 @@ async function carregarUltimaLocalizacao(item, elemento) {
         item.ultimaLocalizacao = textoFinal;
         salvar();
 
-    } catch {
+    } catch (erro) {
 
-        elemento.innerHTML = "<strong>Última localização:</strong><br>Não foi possível carregar";
+        const detalhe = erro && erro.message ? erro.message : "Não foi possível carregar";
+        elemento.innerHTML = `<strong>Última localização:</strong><br>${detalhe}`;
 
     }
 
