@@ -1,22 +1,3 @@
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
-import {
-    collection,
-    deleteDoc,
-    doc,
-    getDocs,
-    getFirestore,
-    onSnapshot,
-    setDoc
-} from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
-import {
-    createUserWithEmailAndPassword,
-    getAuth,
-    onAuthStateChanged,
-    signInWithEmailAndPassword,
-    signOut
-} from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
-
 const form = document.getElementById("form-agendamento");
 
 const vistoriadorInput = document.getElementById("vistoriador");
@@ -27,9 +8,6 @@ const origemInput = document.getElementById("origem");
 const destinoInput = document.getElementById("destino");
 
 const desenhoCarregamentoInput = document.getElementById("desenho-carregamento");
-const statusInput = document.getElementById("status-vistoria");
-const motivoInput = document.getElementById("motivo-status");
-const campoMotivo = document.getElementById("campo-motivo");
 
 const inicioInput = document.getElementById("inicio");
 const fimInput = document.getElementById("fim");
@@ -47,16 +25,34 @@ const successBox = document.getElementById("success-box");
 const stamp = document.getElementById("stamp");
 
 const mapsHint = document.getElementById("maps-link-hint");
-const authForm = document.getElementById("auth-form");
-const authEmailInput = document.getElementById("auth-email");
-const authPasswordInput = document.getElementById("auth-password");
-const authStatus = document.getElementById("auth-status");
-const authModeToggle = document.getElementById("auth-mode-toggle");
-const authSubmitButton = document.getElementById("auth-submit");
-const btnLogout = document.getElementById("btn-logout");
-const authHint = document.getElementById("auth-hint");
+
+// ---------- LOGIN ----------
 const loginScreen = document.getElementById("login-screen");
-const appShell = document.getElementById("app-shell");
+const formLogin = document.getElementById("form-login");
+const loginEmailInput = document.getElementById("login-email");
+const loginSenhaInput = document.getElementById("login-senha");
+const loginErro = document.getElementById("login-erro");
+const appContainer = document.getElementById("app-container");
+const usuarioLogado = document.getElementById("usuario-logado");
+const btnLogout = document.getElementById("btn-logout");
+
+// ---------- FIREBASE ----------
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+    getFirestore,
+    collection,
+    addDoc,
+    doc,
+    deleteDoc,
+    updateDoc,
+    onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+    getAuth,
+    onAuthStateChanged,
+    signInWithEmailAndPassword,
+    signOut
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyCSDobi2Sq0YE8hKc_DhBvtZp-jZJ2lOfk",
@@ -67,210 +63,43 @@ const firebaseConfig = {
     appId: "1:670362386770:web:c9ea1f8496fe8e0b70ba8b"
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+const auth = getAuth(firebaseApp);
+const agendamentosRef = collection(db, "agendamentos");
 
 // ---------- BANCO ----------
+// "agendamentos" é um espelho local dos dados do Firestore, atualizado
+// automaticamente em tempo real sempre que qualquer pessoa (em qualquer
+// dispositivo) cria, edita ou remove um agendamento.
 let agendamentos = [];
-let unsubscribeAgendamentos = null;
-let firestorePronto = false;
-let currentUser = null;
-let modoCadastro = false;
+let vistoriadorAberto = null;
 
-function atualizarInterfaceAutenticacao(user) {
-    currentUser = user;
+function escutarAgendamentos() {
+    return onSnapshot(
+        agendamentosRef,
+        (snapshot) => {
+            agendamentos = snapshot.docs.map(docSnap => ({
+                id: docSnap.id,
+                ...docSnap.data()
+            }));
 
-    const campos = [vistoriadorInput, clienteInput, mapsInput, origemInput, destinoInput, desenhoCarregamentoInput, statusInput, motivoInput, inicioInput, fimInput, btnExtrair, form.querySelector('button[type="submit"]')];
-
-    campos.forEach(campo => {
-        if (campo) {
-            campo.disabled = !user;
+            renderizarBoard();
+            atualizarCoresCards();
+        },
+        (erro) => {
+            console.error("Erro ao sincronizar agendamentos:", erro);
+            mostrarErro("Não foi possível conectar à agenda compartilhada. Verifique sua internet.");
         }
-    });
-
-    if (!user) {
-        loginScreen.classList.remove("is-hidden");
-        loginScreen.hidden = false;
-        appShell.classList.add("is-hidden");
-        appShell.hidden = true;
-        form.classList.add("is-locked");
-        authHint.hidden = false;
-        authStatus.textContent = "Entre para salvar, editar e sincronizar os agendamentos.";
-        authStatus.className = "auth-status auth-status--warning";
-        btnLogout.hidden = true;
-        authSubmitButton.textContent = "Entrar";
-        authModeToggle.textContent = "Criar conta";
-        authModeToggle.dataset.mode = "login";
-        mostrarErro("Faça login para criar ou alterar agendamentos.");
-    } else {
-        loginScreen.classList.add("is-hidden");
-        loginScreen.hidden = true;
-        appShell.classList.remove("is-hidden");
-        appShell.hidden = false;
-        form.classList.remove("is-locked");
-        authHint.hidden = true;
-        authStatus.textContent = `Conectado como ${user.email}`;
-        authStatus.className = "auth-status auth-status--success";
-        btnLogout.hidden = false;
-        authSubmitButton.textContent = modoCadastro ? "Criar conta" : "Entrar";
-        authModeToggle.textContent = modoCadastro ? "Já tenho conta" : "Criar conta";
-        authModeToggle.dataset.mode = modoCadastro ? "signup" : "login";
-        esconderMensagens();
-    }
+    );
 }
 
-async function autenticar(event) {
-    event.preventDefault();
-
-    const email = authEmailInput.value.trim();
-    const senha = authPasswordInput.value.trim();
-
-    if (!email || !senha) {
-        authStatus.textContent = "Informe e-mail e senha para continuar.";
-        authStatus.className = "auth-status auth-status--warning";
-        return;
-    }
-
+async function atualizarAgendamento(id, campos) {
     try {
-        if (modoCadastro) {
-            await createUserWithEmailAndPassword(auth, email, senha);
-        } else {
-            await signInWithEmailAndPassword(auth, email, senha);
-        }
-
-        authForm.reset();
-    } catch (error) {
-        console.error("Erro ao autenticar:", error);
-        authStatus.textContent = error.message || "Não foi possível concluir a autenticação.";
-        authStatus.className = "auth-status auth-status--warning";
+        await updateDoc(doc(db, "agendamentos", id), campos);
+    } catch (erro) {
+        console.error("Erro ao atualizar agendamento:", erro);
     }
-}
-
-async function sair() {
-    try {
-        await signOut(auth);
-        authForm.reset();
-        authStatus.textContent = "Você saiu. Faça login novamente para acessar a agenda.";
-        authStatus.className = "auth-status auth-status--warning";
-    } catch (error) {
-        console.error("Erro ao sair:", error);
-    }
-}
-
-function alternarModoAuth() {
-    modoCadastro = !modoCadastro;
-    authSubmitButton.textContent = modoCadastro ? "Criar conta" : "Entrar";
-    authModeToggle.textContent = modoCadastro ? "Já tenho conta" : "Criar conta";
-    authModeToggle.dataset.mode = modoCadastro ? "signup" : "login";
-    authStatus.textContent = modoCadastro
-        ? "Crie uma conta para proteger a agenda." 
-        : "Entre para salvar e sincronizar os agendamentos.";
-    authStatus.className = modoCadastro ? "auth-status auth-status--warning" : "auth-status auth-status--warning";
-}
-
-async function inicializarFirebase() {
-    try {
-        firestorePronto = Boolean(db);
-
-        if (!firestorePronto) {
-            throw new Error("Firestore não inicializado.");
-        }
-
-        if (unsubscribeAgendamentos) {
-            unsubscribeAgendamentos();
-            unsubscribeAgendamentos = null;
-        }
-
-        onAuthStateChanged(auth, user => {
-            atualizarInterfaceAutenticacao(user);
-
-            if (!user) {
-                if (unsubscribeAgendamentos) {
-                    unsubscribeAgendamentos();
-                    unsubscribeAgendamentos = null;
-                }
-                carregarAgendamentos();
-                return;
-            }
-
-            unsubscribeAgendamentos = onSnapshot(
-                collection(db, "agendamentos"),
-                snapshot => {
-                    const dados = snapshot.docs
-                        .map(item => ({ id: item.id, ...item.data() }))
-                        .filter(item => item && item.vistoriador && (!item.createdBy || item.createdBy === user.uid));
-
-                    agendamentos = dados;
-                    renderizarBoard();
-                    atualizarCoresCards();
-                    localStorage.setItem("tav-agendamentos", JSON.stringify(agendamentos));
-                    sincronizarUrlComAgendamentos();
-                },
-                error => {
-                    console.error("Erro ao sincronizar com Firestore:", error);
-                }
-            );
-
-            carregarAgendamentos();
-        });
-    } catch (error) {
-        console.error("Falha ao conectar ao Firebase:", error);
-        carregarAgendamentos();
-    }
-}
-
-function codificarEstadoAgenda(valor) {
-    const texto = JSON.stringify(valor);
-    const bytes = new TextEncoder().encode(texto);
-    let binario = "";
-
-    bytes.forEach(byte => {
-        binario += String.fromCharCode(byte);
-    });
-
-    return btoa(binario);
-}
-
-function decodificarEstadoAgenda(valor) {
-    const binario = atob(valor);
-    const bytes = Uint8Array.from(binario, caractere => caractere.charCodeAt(0));
-    const texto = new TextDecoder().decode(bytes);
-    return JSON.parse(texto);
-}
-
-function sincronizarUrlComAgendamentos() {
-    const url = new URL(window.location.href);
-    url.searchParams.set("agenda", codificarEstadoAgenda(agendamentos));
-    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-}
-
-function carregarAgendamentos() {
-    const params = new URLSearchParams(window.location.search);
-    const agendaParam = params.get("agenda");
-
-    if (agendaParam) {
-        try {
-            const dados = decodificarEstadoAgenda(agendaParam);
-            agendamentos = Array.isArray(dados) ? dados : [];
-        } catch (error) {
-            agendamentos = [];
-        }
-    } else {
-        try {
-            const dadosLocais = JSON.parse(localStorage.getItem("tav-agendamentos") || "[]");
-            agendamentos = Array.isArray(dadosLocais) ? dadosLocais : [];
-        } catch (error) {
-            agendamentos = [];
-        }
-    }
-
-    if (!agendaParam && agendamentos.length > 0) {
-        sincronizarUrlComAgendamentos();
-    }
-
-    renderizarBoard();
-    atualizarCoresCards();
 }
 
 // ---------- BACK-END / INTEGRAÇÃO COM EXCEL ONLINE (SHAREPOINT) ----------
@@ -278,9 +107,9 @@ function carregarAgendamentos() {
 // Exemplo esperado:
 // { "ultimaLocalizacao": "São Paulo - 10:45" }
 const endpointsPorVistoriador = {
-    "Donizete da Silva": "https://transpes.sharepoint.com/:x:/s/cargaespecial/IQA0zSBHf0ONSK_8QPmA0HNpAd0wcAinyMfrxKy7J4fsqqM?e=eRCTgM",
-    "Carlos Hurtado": "https://transpes.sharepoint.com/:x:/s/cargaespecial/IQAq3bT8bCyDQJPn8ZBCgQp4AS_31UhYYmOT71pi5V3urug?e=nSoyq1",
-    "Lauro Lage": "https://transpes.sharepoint.com/:x:/s/cargaespecial/IQBArFdaQf9aQrwXFzJmc0qJAR4Nkk5ydBNEEVnS36nLoh4?e=UfFn6Z",
+    "Donizete da Silva": "",
+    "Carlos Hurtado": "",
+    "Lauro Lage": "",
     "Márcio Carvalho": "",
     "Frank Landes": ""
 };
@@ -288,42 +117,72 @@ const endpointsPorVistoriador = {
 function obterPlanilhaLocalizacao(vistoriador) {
     return endpointsPorVistoriador[vistoriador] || "";
 }
-
+console.log("Uma aplicação por Márcio Carvalho");
 // ---------- EVENTOS ----------
 
-document.addEventListener("DOMContentLoaded", () => {
-    inicializarFirebase();
+let pararDeEscutar = null;
+
+onAuthStateChanged(auth, (usuario) => {
+    if (usuario) {
+        loginScreen.hidden = true;
+        appContainer.hidden = false;
+        usuarioLogado.textContent = usuario.email;
+
+        if (!pararDeEscutar) {
+            pararDeEscutar = escutarAgendamentos();
+        }
+    } else {
+        loginScreen.hidden = false;
+        appContainer.hidden = true;
+
+        if (pararDeEscutar) {
+            pararDeEscutar();
+            pararDeEscutar = null;
+        }
+    }
+});
+
+formLogin.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    loginErro.hidden = true;
+
+    const email = loginEmailInput.value.trim();
+    const senha = loginSenhaInput.value;
+
+    try {
+        await signInWithEmailAndPassword(auth, email, senha);
+        formLogin.reset();
+    } catch (erro) {
+        console.error("Erro ao entrar:", erro);
+        loginErro.textContent = "E-mail ou senha inválidos.";
+        loginErro.hidden = false;
+    }
+});
+
+btnLogout.addEventListener("click", () => {
+    signOut(auth);
 });
 
 btnExtrair.addEventListener("click", extrairRota);
-statusInput.addEventListener("change", alternarCampoMotivo);
 form.addEventListener("submit", cadastrarAgendamento);
-authForm.addEventListener("submit", autenticar);
-authModeToggle.addEventListener("click", alternarModoAuth);
-btnLogout.addEventListener("click", sair);
 
 // =====================================
 // CADASTRAR AGENDAMENTO
 // =====================================
 
-function cadastrarAgendamento(e) {
+async function cadastrarAgendamento(e) {
 
     e.preventDefault();
 
     esconderMensagens();
-
-    if (!currentUser) {
-        mostrarErro("Faça login para criar ou alterar agendamentos.");
-        return;
-    }
 
     const vistoriador = vistoriadorInput.value.trim();
     const cliente = clienteInput.value.trim();
     const origem = origemInput.value.trim();
     const destino = destinoInput.value.trim();
     const desenhoCarregamento = desenhoCarregamentoInput.value.trim();
-    const status = statusInput.value;
-    const motivo = motivoInput.value.trim();
+    const status = "A Inicar";
+    const motivo = "";
     const planilhaLocalizacao = obterPlanilhaLocalizacao(vistoriador);
     const observacoes = "";
 
@@ -353,8 +212,6 @@ function cadastrarAgendamento(e) {
 
     const novo = {
 
-        id: crypto.randomUUID(),
-
         vistoriador,
 
         cliente,
@@ -374,9 +231,6 @@ function cadastrarAgendamento(e) {
         planilhaLocalizacao,
 
         observacoes,
-
-        createdBy: currentUser.uid,
-        createdAt: new Date().toISOString(),
 
         inicio,
 
@@ -401,15 +255,21 @@ entre ${formatarData(conflito.inicio)} e ${formatarData(conflito.fim)}.`
 
     }
 
-    agendamentos.push(novo);
+    try {
 
-    salvar();
+        await addDoc(agendamentosRef, novo);
 
-    renderizarBoard();
+        mostrarSucesso();
 
-    mostrarSucesso();
+        form.reset();
 
-    form.reset();
+    } catch (erro) {
+
+        console.error("Erro ao salvar agendamento:", erro);
+
+        mostrarErro("Não foi possível salvar o agendamento. Verifique sua internet e tente novamente.");
+
+    }
 
 }
 
@@ -596,30 +456,37 @@ function criarCardVistoriador(nome, lista) {
 
     details.appendChild(container);
 
-    button.addEventListener("click", () => {
+ button.addEventListener("click", () => {
 
-        const isActive = button.classList.contains("is-active");
+    const vaiAbrir = vistoriadorAberto !== nome;
 
-        document.querySelectorAll(".board-vistoriador__button").forEach(item => {
-            item.classList.remove("is-active");
-        });
-
-        document.querySelectorAll(".board-vistoriador__details").forEach(item => {
-            item.hidden = true;
-        });
-
-        if (!isActive) {
-            button.classList.add("is-active");
-            details.hidden = false;
-        }
-
+    document.querySelectorAll(".board-vistoriador__button").forEach(item => {
+        item.classList.remove("is-active");
     });
 
-    wrapper.appendChild(button);
-    wrapper.appendChild(details);
+    document.querySelectorAll(".board-vistoriador__details").forEach(item => {
+        item.hidden = true;
+    });
 
-    return wrapper;
+    if (vaiAbrir) {
+        button.classList.add("is-active");
+        details.hidden = false;
+        vistoriadorAberto = nome;
+    } else {
+        vistoriadorAberto = null;
+    }
+});
 
+// 👇 este bloco sai do listener e vai para cá, fora do clique
+if (nome === vistoriadorAberto) {
+    button.classList.add("is-active");
+    details.hidden = false;
+}
+
+wrapper.appendChild(button);
+wrapper.appendChild(details);
+
+return wrapper;
 }
 
 // =====================================
@@ -694,10 +561,10 @@ function criarAgendamento(item) {
     observacoesInput.value = item.observacoes || "";
     observacoesInput.placeholder = "Adicione detalhes adicionais";
 
-    observacoesInput.addEventListener("input", () => {
+    observacoesInput.addEventListener("change", () => {
 
         item.observacoes = observacoesInput.value;
-        salvar();
+        atualizarAgendamento(item.id, { observacoes: item.observacoes });
 
     });
 
@@ -779,9 +646,9 @@ function criarAgendamento(item) {
     motivoInput.placeholder = "Descreva o motivo";
     motivoInput.hidden = !["Finalizado", "Cancelado", "Interrompido"].includes(item.status || "A Inicar");
 
-    motivoInput.addEventListener("input", () => {
+    motivoInput.addEventListener("change", () => {
         item.motivo = motivoInput.value.trim();
-        salvar();
+        atualizarAgendamento(item.id, { motivo: item.motivo });
     });
 
     statusSelect.addEventListener("change", () => {
@@ -793,7 +660,7 @@ function criarAgendamento(item) {
         }
 
         motivoInput.hidden = !["Finalizado", "Cancelado", "Interrompido"].includes(item.status);
-        salvar();
+        atualizarAgendamento(item.id, { status: item.status, motivo: item.motivo });
     });
 
     statusEditor.appendChild(statusLabel);
@@ -826,24 +693,19 @@ function criarAgendamento(item) {
 // REMOVER AGENDAMENTO
 // =====================================
 
-function removerAgendamento(id) {
+async function removerAgendamento(id) {
 
-    const item = agendamentos.find(agenda => agenda.id === id);
+    try {
 
-    if (!currentUser || item?.createdBy !== currentUser.uid) {
-        mostrarErro("Você só pode excluir agendamentos criados pela sua conta.");
-        return;
+        await deleteDoc(doc(db, "agendamentos", id));
+
+    } catch (erro) {
+
+        console.error("Erro ao remover agendamento:", erro);
+
+        alert("Não foi possível remover o agendamento. Verifique sua internet e tente novamente.");
+
     }
-
-    agendamentos = agendamentos.filter(item => {
-
-        return item.id !== id;
-
-    });
-
-    salvar();
-
-    renderizarBoard();
 
 }
 
@@ -867,41 +729,6 @@ function buscarAgendamentosPorVistoriador(nome) {
 // TAV - Transpes Agenda de Vistorias
 // Parte 3
 // =====================================
-
-// ---------- LOCAL STORAGE ----------
-
-async function salvar() {
-    localStorage.setItem(
-        "tav-agendamentos",
-        JSON.stringify(agendamentos)
-    );
-
-    sincronizarUrlComAgendamentos();
-
-    if (!firestorePronto || !db || !currentUser) {
-        return;
-    }
-
-    try {
-        const snapshot = await getDocs(collection(db, "agendamentos"));
-        const idsAtuais = new Set(agendamentos.map(item => item.id));
-        const promessas = [];
-
-        snapshot.docs.forEach(documento => {
-            if (!idsAtuais.has(documento.id)) {
-                promessas.push(deleteDoc(doc(db, "agendamentos", documento.id)));
-            }
-        });
-
-        agendamentos.forEach(item => {
-            promessas.push(setDoc(doc(db, "agendamentos", item.id), item));
-        });
-
-        await Promise.all(promessas);
-    } catch (error) {
-        console.error("Erro ao salvar agendamentos no Firestore:", error);
-    }
-}
 
 // ---------- MENSAGENS ----------
 
@@ -1285,87 +1112,17 @@ function normalizarUrlPlanilha(url) {
 
     if (valor.includes("/Shared%20Documents/") || valor.includes("/Documents/")) {
 
-        return valor.includes("download=1") ? valor : `${valor}${valor.includes("?") ? "&" : "?"}download=1`;
+        return valor;
     }
 
     if (valor.includes("/workbook/")) {
 
-        return valor.includes("download=1") ? valor : `${valor}${valor.includes("?") ? "&" : "?"}download=1`;
-    }
+        return valor;
 
-    if (valor.includes("sharepoint.com") && valor.includes(":x:")) {
-
-        return `${valor}${valor.includes("?") ? "&" : "?"}download=1`;
     }
 
     return valor;
 
-}
-
-function converterRespostaParaTexto(resposta) {
-    return resposta.text ? resposta.text() : Promise.resolve(String(resposta || ""));
-}
-
-function construirUrlsProxy(caminho) {
-    const candidatos = [];
-
-    if (typeof window !== "undefined" && window.location) {
-        if (window.location.origin && window.location.origin !== "null") {
-            candidatos.push(new URL(caminho, window.location.href).toString());
-        }
-
-        if (window.location.protocol === "file:") {
-            candidatos.push(`http://127.0.0.1:3000${caminho}`);
-            candidatos.push(`http://localhost:3000${caminho}`);
-        } else {
-            const host = window.location.hostname || "127.0.0.1";
-            candidatos.push(`http://${host}:3000${caminho}`);
-            candidatos.push(`http://127.0.0.1:3000${caminho}`);
-            candidatos.push(`http://localhost:3000${caminho}`);
-        }
-    }
-
-    return [...new Set(candidatos)];
-}
-
-async function buscarConteudoPlanilha(urlPlanilha) {
-    const urlsParaTentar = [
-        ...construirUrlsProxy(`/api/ultima-localizacao?url=${encodeURIComponent(urlPlanilha)}`),
-        ...construirUrlsProxy(`/api/ultima-localizacao?url=${encodeURIComponent(urlPlanilha.replace(/download=1/i, ""))}`),
-        ...construirUrlsProxy(`/api/ultima-localizacao?url=${encodeURIComponent(urlPlanilha.replace(/&download=1/i, ""))}`)
-    ];
-
-    for (const url of urlsParaTentar) {
-        try {
-            const respostaProxy = await fetch(url, {
-                headers: {
-                    "Accept": "application/json, text/plain, */*"
-                }
-            });
-
-            if (respostaProxy.ok) {
-                const texto = await respostaProxy.text();
-                if (texto && texto.trim()) {
-                    return texto;
-                }
-            }
-        } catch {
-            // tenta a próxima URL
-        }
-    }
-
-    const resposta = await fetch(urlPlanilha, {
-        headers: {
-            "Accept": "application/json, text/plain, */*"
-        }
-    });
-
-    if (!resposta.ok) {
-        const detalhe = await resposta.text().catch(() => "");
-        throw new Error(`Falha ao acessar a planilha (${resposta.status}): ${detalhe || "sem detalhes"}`);
-    }
-
-    return await resposta.text();
 }
 
 async function carregarUltimaLocalizacao(item, elemento) {
@@ -1383,7 +1140,19 @@ async function carregarUltimaLocalizacao(item, elemento) {
 
     try {
 
-        const texto = await buscarConteudoPlanilha(urlPlanilha);
+        const resposta = await fetch(urlPlanilha, {
+            headers: {
+                "Accept": "application/json, text/plain, */*"
+            }
+        });
+
+        if (!resposta.ok) {
+
+            throw new Error("Falha ao acessar a planilha");
+
+        }
+
+        const texto = await resposta.text();
         let ultimaLocalizacao = "Sem dados";
 
         if (texto.includes("<") && texto.includes("html")) {
@@ -1421,33 +1190,16 @@ async function carregarUltimaLocalizacao(item, elemento) {
         elemento.innerHTML = `<strong>Última localização:</strong><br>${textoFinal}`;
 
         item.ultimaLocalizacao = textoFinal;
-        salvar();
 
-    } catch (erro) {
+    } catch {
 
-        const detalhe = erro && erro.message ? erro.message : "Não foi possível carregar";
-        elemento.innerHTML = `<strong>Última localização:</strong><br>${detalhe}`;
+        elemento.innerHTML = "<strong>Última localização:</strong><br>Não foi possível carregar";
 
     }
 
 }
 
 // ---------- STATUS ----------
-
-function alternarCampoMotivo() {
-
-    const status = statusInput.value;
-    const deveMostrar = ["Finalizado", "Cancelado", "Interrompido"].includes(status);
-
-    campoMotivo.hidden = !deveMostrar;
-
-    if (!deveMostrar) {
-
-        motivoInput.value = "";
-
-    }
-
-}
 
 function normalizarStatus(status) {
 
@@ -1557,13 +1309,13 @@ observer.observe(board, {
 
 // ---------- INICIALIZAÇÃO ----------
 
-alternarCampoMotivo();
 renderizarBoard();
 
 atualizarCoresCards();
 
-console.log("================================");
-console.log("TAV iniciado com sucesso.");
-console.log("Transpes Agenda de Vistorias");
-console.log("Agendamentos carregados:", agendamentos.length);
-console.log("================================");
+//console.log("================================");
+//console.log("TAV iniciado com sucesso.");
+//console.log("Transpes Agenda de Vistorias");
+//console.log("Agendamentos carregados:", agendamentos.length);
+//console.log("================================");
+console.log("Procurando algo aqui?")
