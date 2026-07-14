@@ -101,20 +101,24 @@ async function atualizarAgendamento(id, campos) {
     }
 }
 
-// ---------- BACK-END / INTEGRAÇÃO COM EXCEL ONLINE (SHAREPOINT) ----------
-// Preencha com um endpoint que devolva um JSON simples com a última localização.
-// Exemplo esperado:
-// { "ultimaLocalizacao": "São Paulo - 10:45" }
-const endpointsPorVistoriador = {
-    "Donizete da Silva": "data/planilhas/donizete-da-silva.xlsx",
-    "Carlos Hurtado": "data/planilhas/carlos-hurtado.xlsx",
-    "Lauro Lage": "data/planilhas/lauro-Lage.xlsx",
+// ---------- BACK-END /  ----------
+
+const GOOGLE_SHEET_ID_POR_VISTORIADOR = {
+    "Donizete da Silva": "1rUTCmqumGJJIqsmpU9Nfu_UyBWRbh91dzg23WRpe9v4",
+    "Carlos Hurtado": "1o7TZa8tJaJTWhbcxbLdRN0bRwOWMYeB8vfAcbgh2k50",
+    "Lauro Lage": "182RucYyHNFJCgoUIumTIODgSL0S_4MQwPgHAhMZHKvE",
     "Márcio Carvalho": "",
     "Frank Landes": ""
 };
 
 function obterPlanilhaLocalizacao(vistoriador) {
-    return endpointsPorVistoriador[vistoriador] || "";
+    const id = GOOGLE_SHEET_ID_POR_VISTORIADOR[vistoriador];
+
+    if (!id) {
+        return "";
+    }
+
+    return `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&gid=0`;
 }
 
 // ---------- EVENTOS ----------
@@ -771,7 +775,7 @@ function mostrarStamp() {
 
 }
 
-// ---------- DADOS EXTERNOS (planilha local por vistoriador) ----------
+// ---------- DADOS EXTERNOS (Google Sheets por vistoriador) ----------
 
 function formatarDataCurta(data) {
 
@@ -791,13 +795,89 @@ function normalizarTexto(valor) {
 
 }
 
+// Converte uma data no formato brasileiro "DD/MM/AAAA" (como aparece nas
+// planilhas) em um objeto Date. Retorna null se o texto não for uma data
+// válida nesse formato (usado para pular linhas de cabeçalho/mês na planilha).
+function parseDataBR(texto) {
+
+    const match = String(texto || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+
+    if (!match) {
+
+        return null;
+
+    }
+
+    const [, dia, mes, ano] = match;
+
+    const data = new Date(Number(ano), Number(mes) - 1, Number(dia));
+
+    return isNaN(data.getTime()) ? null : data;
+
+}
+
+// Parser de CSV simples, tolerante a campos entre aspas contendo vírgulas
+// e quebras de linha (formato retornado pelo endpoint gviz do Google Sheets).
+function parseCSV(texto) {
+
+    const linhas = [];
+    let linhaAtual = [];
+    let campoAtual = "";
+    let dentroDeAspas = false;
+
+    for (let i = 0; i < texto.length; i++) {
+
+        const c = texto[i];
+        const proximo = texto[i + 1];
+
+        if (dentroDeAspas) {
+
+            if (c === '"' && proximo === '"') {
+                campoAtual += '"';
+                i++;
+            } else if (c === '"') {
+                dentroDeAspas = false;
+            } else {
+                campoAtual += c;
+            }
+
+        } else {
+
+            if (c === '"') {
+                dentroDeAspas = true;
+            } else if (c === ",") {
+                linhaAtual.push(campoAtual);
+                campoAtual = "";
+            } else if (c === "\n" || c === "\r") {
+                if (c === "\r" && proximo === "\n") i++;
+                linhaAtual.push(campoAtual);
+                linhas.push(linhaAtual);
+                linhaAtual = [];
+                campoAtual = "";
+            } else {
+                campoAtual += c;
+            }
+
+        }
+
+    }
+
+    if (campoAtual.length > 0 || linhaAtual.length > 0) {
+        linhaAtual.push(campoAtual);
+        linhas.push(linhaAtual);
+    }
+
+    return linhas.filter(l => l.some(campo => campo.trim() !== ""));
+
+}
+
 async function carregarUltimaLocalizacao(item, elemento) {
 
-    const caminhoPlanilha = (
+    const urlPlanilha = (
         item.planilhaLocalizacao || obterPlanilhaLocalizacao(item.vistoriador) || ""
     ).trim();
 
-    if (!caminhoPlanilha) {
+    if (!urlPlanilha) {
 
         elemento.innerHTML = "<strong>Última localização:</strong><br>Não informada";
         return;
@@ -806,52 +886,46 @@ async function carregarUltimaLocalizacao(item, elemento) {
 
     try {
 
-        const resposta = await fetch(caminhoPlanilha);
+        const resposta = await fetch(urlPlanilha);
 
         if (!resposta.ok) {
 
-            throw new Error("Planilha não encontrada em: " + caminhoPlanilha);
+            throw new Error("Planilha não encontrada em: " + urlPlanilha);
 
         }
 
-        const buffer = await resposta.arrayBuffer();
-        const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+        const textoCSV = await resposta.text();
+        const linhas = parseCSV(textoCSV);
 
         const hoje = new Date();
         hoje.setHours(0, 0, 0, 0);
 
         let maisRecente = null;
 
-        workbook.SheetNames.forEach(nomeAba => {
+        linhas.forEach(linha => {
 
-            const planilha = workbook.Sheets[nomeAba];
-            const linhas = XLSX.utils.sheet_to_json(planilha, { header: 1, defval: "" });
+            // Colunas esperadas: Nº | DATA | LOCAL | DESCRIÇÃO
+            // Linhas de cabeçalho de mês ("JANEIRO", "Encarregado: ...", etc.)
+            // não têm data válida na coluna B e são ignoradas automaticamente.
+            const [, dataCelula, localCelula, descricaoCelula] = linha;
 
-            linhas.forEach(linha => {
+            const data = parseDataBR(dataCelula);
 
-                const [, dataCelula, localCelula, descricaoCelula] = linha;
+            if (!data || data > hoje || !localCelula) {
 
-                const data = dataCelula instanceof Date
-                    ? dataCelula
-                    : new Date(dataCelula);
+                return;
 
-                if (isNaN(data.getTime()) || data > hoje || !localCelula) {
+            }
 
-                    return;
+            if (!maisRecente || data > maisRecente.data) {
 
-                }
+                maisRecente = {
+                    data,
+                    local: normalizarTexto(localCelula),
+                    descricao: normalizarTexto(descricaoCelula)
+                };
 
-                if (!maisRecente || data > maisRecente.data) {
-
-                    maisRecente = {
-                        data,
-                        local: normalizarTexto(localCelula),
-                        descricao: normalizarTexto(descricaoCelula)
-                    };
-
-                }
-
-            });
+            }
 
         });
 
