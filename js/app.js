@@ -73,7 +73,6 @@ const agendamentosRef = collection(db, "agendamentos");
 // automaticamente em tempo real sempre que qualquer pessoa (em qualquer
 // dispositivo) cria, edita ou remove um agendamento.
 let agendamentos = [];
-let vistoriadorAberto = null;
 
 function escutarAgendamentos() {
     return onSnapshot(
@@ -107,9 +106,9 @@ async function atualizarAgendamento(id, campos) {
 // Exemplo esperado:
 // { "ultimaLocalizacao": "São Paulo - 10:45" }
 const endpointsPorVistoriador = {
-    "Donizete da Silva": "",
-    "Carlos Hurtado": "",
-    "Lauro Lage": "",
+    "Donizete da Silva": "data/planilhas/donizete-da-silva.xlsx",
+    "Carlos Hurtado": "data/planilhas/carlos-hurtado.xlsx",
+    "Lauro Lage": "data/planilhas/lauro-Lage.xlsx",
     "Márcio Carvalho": "",
     "Frank Landes": ""
 };
@@ -117,7 +116,7 @@ const endpointsPorVistoriador = {
 function obterPlanilhaLocalizacao(vistoriador) {
     return endpointsPorVistoriador[vistoriador] || "";
 }
-console.log("Uma aplicação por Márcio Carvalho");
+
 // ---------- EVENTOS ----------
 
 let pararDeEscutar = null;
@@ -456,37 +455,30 @@ function criarCardVistoriador(nome, lista) {
 
     details.appendChild(container);
 
- button.addEventListener("click", () => {
+    button.addEventListener("click", () => {
 
-    const vaiAbrir = vistoriadorAberto !== nome;
+        const isActive = button.classList.contains("is-active");
 
-    document.querySelectorAll(".board-vistoriador__button").forEach(item => {
-        item.classList.remove("is-active");
+        document.querySelectorAll(".board-vistoriador__button").forEach(item => {
+            item.classList.remove("is-active");
+        });
+
+        document.querySelectorAll(".board-vistoriador__details").forEach(item => {
+            item.hidden = true;
+        });
+
+        if (!isActive) {
+            button.classList.add("is-active");
+            details.hidden = false;
+        }
+
     });
 
-    document.querySelectorAll(".board-vistoriador__details").forEach(item => {
-        item.hidden = true;
-    });
+    wrapper.appendChild(button);
+    wrapper.appendChild(details);
 
-    if (vaiAbrir) {
-        button.classList.add("is-active");
-        details.hidden = false;
-        vistoriadorAberto = nome;
-    } else {
-        vistoriadorAberto = null;
-    }
-});
+    return wrapper;
 
-// 👇 este bloco sai do listener e vai para cá, fora do clique
-if (nome === vistoriadorAberto) {
-    button.classList.add("is-active");
-    details.hidden = false;
-}
-
-wrapper.appendChild(button);
-wrapper.appendChild(details);
-
-return wrapper;
 }
 
 // =====================================
@@ -779,163 +771,7 @@ function mostrarStamp() {
 
 }
 
-// ---------- DADOS EXTERNOS ----------
-
-function parseCsvLinha(linha) {
-
-    const valores = [];
-    let valorAtual = "";
-    let dentroAspas = false;
-
-    for (let i = 0; i < linha.length; i++) {
-
-        const char = linha[i];
-
-        if (char === '"') {
-
-            if (dentroAspas && linha[i + 1] === '"') {
-
-                valorAtual += '"';
-                i++;
-
-            } else {
-
-                dentroAspas = !dentroAspas;
-
-            }
-
-        } else if (char === ',' && !dentroAspas) {
-
-            valores.push(valorAtual.trim());
-            valorAtual = "";
-
-        } else {
-
-            valorAtual += char;
-
-        }
-
-    }
-
-    valores.push(valorAtual.trim());
-
-    return valores;
-
-}
-
-function identificarIndiceColuna(colunas, nomes) {
-
-    const normalizados = colunas.map(coluna =>
-        normalizarTexto(coluna).toLowerCase()
-    );
-
-    for (const nome of nomes) {
-
-        const indice = normalizados.findIndex(coluna =>
-            coluna.includes(nome.toLowerCase())
-        );
-
-        if (indice >= 0) {
-
-            return indice;
-
-        }
-
-    }
-
-    return -1;
-}
-
-function encontrarBlocosDeDados(texto) {
-
-    const linhas = texto
-        .split(/\r?\n/)
-        .map(linha => linha.trim())
-        .filter(Boolean);
-
-    const blocos = [];
-
-    for (let i = 0; i < linhas.length; i++) {
-
-        const colunas = parseCsvLinha(linhas[i]);
-
-        const indiceData = identificarIndiceColuna(colunas, ["data"]);
-
-        if (indiceData < 0) {
-
-            continue;
-        }
-
-        const linhaData = colunas[indiceData];
-        const data = parseDataParaValor(linhaData);
-
-        if (!data) {
-
-            continue;
-        }
-
-        const localValue = colunas
-            .slice(indiceData + 1)
-            .map(normalizarTexto)
-            .find(valor => valor && valor.toLowerCase() !== "undefined" && valor.toLowerCase() !== "vazio");
-
-        if (localValue) {
-
-            blocos.push({
-                linha: i,
-                data,
-                local: normalizarTexto(localValue)
-            });
-        }
-    }
-
-    return blocos;
-}
-
-function parseDataParaValor(valor) {
-
-    const texto = String(valor || "").trim();
-
-    if (!texto) {
-
-        return null;
-
-    }
-
-    const normalizado = texto.replace(/\s+/g, "");
-    const match = normalizado.match(/^(\d{1,2})[\/-](\d{1,2})([\/-](\d{2,4}))?$/);
-
-    if (!match) {
-
-        return null;
-
-    }
-
-    let dia = Number(match[1]);
-    let mes = Number(match[2]);
-    let ano = match[4] ? Number(match[4]) : new Date().getFullYear();
-
-    if (ano < 100) {
-
-        ano += 2000;
-
-    }
-
-    const data = new Date(ano, mes - 1, dia);
-
-    if (
-        data.getFullYear() !== ano ||
-        data.getMonth() !== mes - 1 ||
-        data.getDate() !== dia
-    ) {
-
-        return null;
-
-    }
-
-    return data;
-
-}
+// ---------- DADOS EXTERNOS (planilha local por vistoriador) ----------
 
 function formatarDataCurta(data) {
 
@@ -955,183 +791,13 @@ function normalizarTexto(valor) {
 
 }
 
-function resolverUltimaLocalizacaoPayload(payload) {
-
-    if (!payload) {
-
-        return "";
-
-    }
-
-    if (typeof payload === "string") {
-
-        return payload.trim();
-
-    }
-
-    if (Array.isArray(payload)) {
-
-        for (let i = payload.length - 1; i >= 0; i--) {
-
-            const item = payload[i];
-            const data = item?.data || item?.date || item?.ultimaData || item?.dt;
-            const cidade = item?.cidade || item?.localizacao || item?.local || item?.valor || item?.[1];
-
-            if (data && cidade) {
-
-                const dataParseada = parseDataParaValor(data);
-
-                return dataParseada
-                    ? `${formatarDataCurta(dataParseada)} - ${normalizarTexto(cidade)}`
-                    : normalizarTexto(cidade);
-
-            }
-
-        }
-
-        return "";
-
-    }
-
-    if (typeof payload === "object") {
-
-        const valorDireto = payload.ultimaLocalizacao || payload.cidade || payload.localizacao || payload.local || payload.valor;
-
-        if (valorDireto) {
-
-            return normalizarTexto(valorDireto);
-        }
-
-        const data = payload.ultimaData || payload.data || payload.date || payload.dt;
-        const cidade = payload.cidade || payload.localizacao || payload.local || payload.valor || payload.resultado;
-
-        if (data && cidade) {
-
-            const dataParseada = parseDataParaValor(data);
-
-            return dataParseada
-                ? `${formatarDataCurta(dataParseada)} - ${normalizarTexto(cidade)}`
-                : normalizarTexto(cidade);
-
-        }
-
-        if (payload.rows) {
-
-            return resolverUltimaLocalizacaoPayload(payload.rows);
-
-        }
-
-        if (payload.result) {
-
-            return resolverUltimaLocalizacaoPayload(payload.result);
-
-        }
-    }
-
-    return "";
-
-}
-
-function extrairUltimaLocalizacao(texto) {
-
-    if (!texto) {
-
-        return "Sem dados";
-
-    }
-
-    try {
-
-        const payload = JSON.parse(texto);
-        const valor = resolverUltimaLocalizacaoPayload(payload);
-
-        if (valor) {
-
-            return valor;
-
-        }
-
-    } catch {
-
-        // segue para o parsing do CSV/texto simples
-    }
-
-    const linhas = texto
-        .split(/\r?\n/)
-        .map(linha => linha.trim())
-        .filter(Boolean);
-
-    if (linhas.length === 0) {
-
-        return "Sem dados";
-
-    }
-
-    const blocos = encontrarBlocosDeDados(texto);
-
-    if (blocos.length === 0) {
-
-        return "Sem dados";
-
-    }
-
-    const maisRecente = blocos
-        .slice()
-        .sort((a, b) => b.data - a.data)[0];
-
-    if (!maisRecente) {
-
-        return "Sem dados";
-
-    }
-
-    return `${formatarDataCurta(maisRecente.data)} - ${maisRecente.local}`;
-
-}
-
-function normalizarUrlPlanilha(url) {
-
-    const valor = (url || "").trim();
-
-    if (!valor) {
-
-        return "";
-
-    }
-
-    if (valor.includes("/:x:/")) {
-
-        return valor.replace(/:x:/i, ":x:/") + "&download=1";
-    }
-
-    if (valor.includes("/Lists/")) {
-
-        return valor;
-
-    }
-
-    if (valor.includes("/Shared%20Documents/") || valor.includes("/Documents/")) {
-
-        return valor;
-    }
-
-    if (valor.includes("/workbook/")) {
-
-        return valor;
-
-    }
-
-    return valor;
-
-}
-
 async function carregarUltimaLocalizacao(item, elemento) {
 
-    const urlPlanilha = normalizarUrlPlanilha(
-        item.planilhaLocalizacao || obterPlanilhaLocalizacao(item.vistoriador)
-    );
+    const caminhoPlanilha = (
+        item.planilhaLocalizacao || obterPlanilhaLocalizacao(item.vistoriador) || ""
+    ).trim();
 
-    if (!urlPlanilha) {
+    if (!caminhoPlanilha) {
 
         elemento.innerHTML = "<strong>Última localização:</strong><br>Não informada";
         return;
@@ -1140,60 +806,74 @@ async function carregarUltimaLocalizacao(item, elemento) {
 
     try {
 
-        const resposta = await fetch(urlPlanilha, {
-            headers: {
-                "Accept": "application/json, text/plain, */*"
-            }
-        });
+        const resposta = await fetch(caminhoPlanilha);
 
         if (!resposta.ok) {
 
-            throw new Error("Falha ao acessar a planilha");
+            throw new Error("Planilha não encontrada em: " + caminhoPlanilha);
 
         }
 
-        const texto = await resposta.text();
-        let ultimaLocalizacao = "Sem dados";
+        const buffer = await resposta.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
 
-        if (texto.includes("<") && texto.includes("html")) {
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
 
-            ultimaLocalizacao = "Planilha acessada, mas sem dados legíveis no momento";
+        let maisRecente = null;
 
-        } else {
+        workbook.SheetNames.forEach(nomeAba => {
 
-            try {
+            const planilha = workbook.Sheets[nomeAba];
+            const linhas = XLSX.utils.sheet_to_json(planilha, { header: 1, defval: "" });
 
-                const payload = JSON.parse(texto);
-                ultimaLocalizacao = resolverUltimaLocalizacaoPayload(payload);
+            linhas.forEach(linha => {
 
-                if (!ultimaLocalizacao) {
-                    ultimaLocalizacao = payload.ultimaLocalizacao
-                        || payload.ultima_localizacao
-                        || payload.value
-                        || payload.ultima
-                        || payload[0]
-                        || payload.data
-                        || payload.result
-                        || "Sem dados";
+                const [, dataCelula, localCelula, descricaoCelula] = linha;
+
+                const data = dataCelula instanceof Date
+                    ? dataCelula
+                    : new Date(dataCelula);
+
+                if (isNaN(data.getTime()) || data > hoje || !localCelula) {
+
+                    return;
+
                 }
 
-            } catch {
+                if (!maisRecente || data > maisRecente.data) {
 
-                ultimaLocalizacao = extrairUltimaLocalizacao(texto);
-            }
+                    maisRecente = {
+                        data,
+                        local: normalizarTexto(localCelula),
+                        descricao: normalizarTexto(descricaoCelula)
+                    };
+
+                }
+
+            });
+
+        });
+
+        if (!maisRecente || !maisRecente.local) {
+
+            elemento.innerHTML = "<strong>Última localização:</strong><br>Sem dados até hoje";
+            return;
+
         }
 
-        const textoFinal = typeof ultimaLocalizacao === "string"
-            ? ultimaLocalizacao
-            : String(ultimaLocalizacao || "Sem dados");
+        const textoFinal = maisRecente.descricao
+            ? `${formatarDataCurta(maisRecente.data)} — ${maisRecente.local} (${maisRecente.descricao})`
+            : `${formatarDataCurta(maisRecente.data)} — ${maisRecente.local}`;
 
         elemento.innerHTML = `<strong>Última localização:</strong><br>${textoFinal}`;
 
         item.ultimaLocalizacao = textoFinal;
 
-    } catch {
+    } catch (erro) {
 
-        elemento.innerHTML = "<strong>Última localização:</strong><br>Não foi possível carregar";
+        console.error("Erro ao carregar planilha de localização:", erro);
+        elemento.innerHTML = "<strong>Última localização:</strong><br>Não foi possível carregar a planilha";
 
     }
 
@@ -1313,9 +993,8 @@ renderizarBoard();
 
 atualizarCoresCards();
 
-//console.log("================================");
-//console.log("TAV iniciado com sucesso.");
-//console.log("Transpes Agenda de Vistorias");
-//console.log("Agendamentos carregados:", agendamentos.length);
-//console.log("================================");
-console.log("Procurando algo aqui?")
+console.log("================================");
+console.log("TAV iniciado com sucesso.");
+console.log("Transpes Agenda de Vistorias");
+console.log("Agendamentos carregados:", agendamentos.length);
+console.log("================================");
