@@ -17,6 +17,8 @@ const btnExtrair = document.getElementById("btn-extrair");
 const board = document.getElementById("board-list");
 const boardEmpty = document.getElementById("board-empty");
 const btnVerTodos = document.getElementById("btn-ver-todos");
+const btnRelatorio = document.getElementById("btn-relatorio");
+btnRelatorio.addEventListener("click", gerarRelatorio);
 
 const conflictBox = document.getElementById("conflict-box");
 const conflictMessage = document.getElementById("conflict-message");
@@ -252,9 +254,11 @@ async function cadastrarAgendamento(e) {
 
         inicio,
 
-        fim
+        fim,
 
-    };
+        criadoPor: auth.currentUser ? formatarNomeDoEmail(auth.currentUser.email) : "Desconhecido"
+
+};
 
     const conflito = verificarConflito(novo);
 
@@ -607,6 +611,12 @@ function criarAgendamento(item) {
     const botoes = document.createElement("div");
     botoes.className = "agenda-actions";
 
+    const criador = document.createElement("span");        // NOVO
+    criador.className = "agenda-item__criador";             // NOVO
+    criador.textContent = item.criadoPor                    // NOVO
+    ? `Agendado por: ${item.criadoPor}`                  // NOVO
+    : "Agendado por: —";                                 // NOVO
+
     const excluir = document.createElement("button");
     excluir.type = "button";
     excluir.textContent = "Excluir";
@@ -623,6 +633,7 @@ function criarAgendamento(item) {
 
     });
 
+    botoes.appendChild(criador);
     botoes.appendChild(excluir);
 
     grid.appendChild(colRota);
@@ -823,6 +834,16 @@ function normalizarTexto(valor) {
         .trim();
 
 }
+function formatarNomeDoEmail(email) {
+    if (!email) {
+        return "Desconhecido";
+    }
+    const usuario = email.split("@")[0];
+    return usuario.split(".")
+    .filter(Boolean)
+    .map(parte => parte.charAt(0).toUpperCase() + parte.slice(1).toLowerCase())
+    .join(" ");
+}
 
 // Converte uma data no formato brasileiro "DD/MM/AAAA" (como aparece nas
 // planilhas) em um objeto Date. Retorna null se o texto não for uma data
@@ -979,6 +1000,77 @@ async function carregarUltimaLocalizacao(item, elemento) {
         elemento.innerHTML = "<strong>Última localização:</strong><br>Não foi possível carregar a planilha";
 
     }
+
+}
+
+function gerarRelatorio() {
+
+    if (agendamentos.length === 0) {
+
+        alert("Não há agendamentos para gerar relatório.");
+        return;
+
+    }
+
+    const cabecalho = [
+        "Vistoriador",
+        "Cliente",
+        "Origem",
+        "Destino",
+        "Início",
+        "Término",
+        "Status",
+        "Motivo",
+        "Observações",
+        "Agendado por"
+    ];
+
+    const linhas = agendamentos.map(item => [
+        item.vistoriador,
+        item.cliente,
+        item.origem,
+        item.destino,
+        formatarData(item.inicio),
+        formatarData(item.fim),
+        item.status,
+        item.motivo || "",
+        item.observacoes || "",
+        item.criadoPor || ""
+    ]);
+
+    const escaparCampo = (valor) => {
+
+        const texto = String(valor ?? "");
+
+        if (texto.includes(",") || texto.includes('"') || texto.includes("\n")) {
+
+            return `"${texto.replace(/"/g, '""')}"`;
+
+        }
+
+        return texto;
+
+    };
+
+    const csv = [cabecalho, ...linhas]
+        .map(linha => linha.map(escaparCampo).join(","))
+        .join("\n");
+
+    // BOM no início ajuda o Excel a reconhecer acentuação corretamente
+    const blobCSV = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blobCSV);
+
+    const link = document.createElement("a");
+    link.href = url;
+
+    const dataHoje = new Date().toISOString().slice(0, 10);
+    link.download = `relatorio-vistorias-${dataHoje}.csv`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
 
 }
 

@@ -459,6 +459,13 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
+.board__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 #btn-ver-todos {
   width: auto;
   flex-shrink: 0;
@@ -482,6 +489,31 @@ textarea:focus {
 #btn-ver-todos:hover {
   background: var(--paper);
   color: #000;
+}
+
+#btn-relatorio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0.55;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+#btn-relatorio:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.7);
 }
 
 .agenda-item {
@@ -666,7 +698,16 @@ textarea:focus {
 
 .agenda-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agenda-item__criador {
+  font-size: 12px;
+  color: var(--muted, #888);
+  overflow-wrap: anywhere;
+
 }
 
 .agenda-actions button {
