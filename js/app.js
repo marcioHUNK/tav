@@ -16,6 +16,7 @@ const btnExtrair = document.getElementById("btn-extrair");
 
 const board = document.getElementById("board-list");
 const boardEmpty = document.getElementById("board-empty");
+const btnVerTodos = document.getElementById("btn-ver-todos");
 
 const conflictBox = document.getElementById("conflict-box");
 const conflictMessage = document.getElementById("conflict-message");
@@ -73,6 +74,14 @@ const agendamentosRef = collection(db, "agendamentos");
 // automaticamente em tempo real sempre que qualquer pessoa (em qualquer
 // dispositivo) cria, edita ou remove um agendamento.
 let agendamentos = [];
+
+// ---------- ESTADO DO MURAL ----------
+// vistoriadorAberto: guarda qual card deve continuar expandido entre
+// re-renders (o board inteiro é reconstruído a cada onSnapshot).
+// mostrarTodos: alterna entre ver só vistorias ativas ou tudo.
+let vistoriadorAberto = null;
+let mostrarTodos = false;
+const STATUS_ATIVOS = ["A Inicar", "Em Execução"];
 
 function escutarAgendamentos() {
     return onSnapshot(
@@ -168,6 +177,12 @@ btnLogout.addEventListener("click", () => {
 
 btnExtrair.addEventListener("click", extrairRota);
 form.addEventListener("submit", cadastrarAgendamento);
+
+btnVerTodos.addEventListener("click", () => {
+    mostrarTodos = !mostrarTodos;
+    btnVerTodos.textContent = mostrarTodos ? "Ver ativos" : "Ver todos";
+    renderizarBoard();
+});
 
 // =====================================
 // CADASTRAR AGENDAMENTO
@@ -379,7 +394,15 @@ function renderizarBoard() {
 
     board.innerHTML = "";
 
-    if (agendamentos.length === 0) {
+    const lista = mostrarTodos
+        ? agendamentos
+        : agendamentos.filter(item => STATUS_ATIVOS.includes(item.status));
+
+    if (lista.length === 0) {
+
+        boardEmpty.textContent = (mostrarTodos || agendamentos.length === 0)
+            ? "Nenhum agendamento ainda. Preencha a ordem de serviço ao lado para começar."
+            : "Nenhuma vistoria em andamento ou a iniciar no momento.";
 
         boardEmpty.style.display = "block";
         return;
@@ -388,7 +411,7 @@ function renderizarBoard() {
 
     boardEmpty.style.display = "none";
 
-    agendamentos.sort((a, b) => {
+    lista.sort((a, b) => {
 
         if (a.vistoriador < b.vistoriador) return -1;
         if (a.vistoriador > b.vistoriador) return 1;
@@ -399,7 +422,7 @@ function renderizarBoard() {
 
     const grupos = {};
 
-    agendamentos.forEach(item => {
+    lista.forEach(item => {
 
         if (!grupos[item.vistoriador]) {
 
@@ -446,7 +469,10 @@ function criarCardVistoriador(nome, lista) {
 
     const details = document.createElement("div");
     details.className = "board-vistoriador__details";
-    details.hidden = true;
+
+    const jaEstavaAberto = nome === vistoriadorAberto;
+    details.hidden = !jaEstavaAberto;
+    if (jaEstavaAberto) button.classList.add("is-active");
 
     const container = document.createElement("div");
     container.className = "board-vistoriador__items";
@@ -474,6 +500,9 @@ function criarCardVistoriador(nome, lista) {
         if (!isActive) {
             button.classList.add("is-active");
             details.hidden = false;
+            vistoriadorAberto = nome;
+        } else {
+            vistoriadorAberto = null;
         }
 
     });

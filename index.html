@@ -50,7 +50,7 @@
 
       <!-- Ordem de serviço: formulário de novo agendamento -->
      <section class="work-order" aria-labelledby="form-title">
-        <h2 id="form-title" class="work-order__title">Novo Agendamento de vistória</h2>
+        <h2 id="form-title" class="work-order__title">Novo Agendamento de vistoria</h2>
 
         <form id="form-agendamento" class="form" novalidate>
 
@@ -65,7 +65,7 @@
           </div>
 
           <div class="field">
-            <label for="cliente">Cliente</label>
+            <label for="cliente">Demanda / Cliente</label>
             <input type="text" id="cliente" name="cliente" placeholder="Nome do cliente" autocomplete="off">
           </div>
 
@@ -136,17 +136,20 @@
       </section>
  
       <!-- Mural: lista de vistoriadores e seus agendamentos -->
-      <section class="board" aria-label="Agendamentos por vistoriador">
-        <p class="board__hint">Clique no nome do vistoriador para ver os agendamentos.</p>
+        <section class="board" aria-label="Agendamentos por vistoriador">
+          <div class="board__toolbar">
+            <p class="board__hint">Clique no nome do vistoriador para ver os agendamentos.</p>
+            <button type="button" id="btn-ver-todos" class="board-toggle">Ver todos</button>
+          </div>
 
-        <div id="board-empty" class="board__empty">
-          Nenhum agendamento ainda. Preencha a ordem de serviço ao lado para começar.
-        </div>
- 
-        <div id="board-list" class="board__list">
-          <!-- linhas de vistoriador (template em js/app.js) serão inseridas aqui -->
-        </div>
-      </section>
+          <div id="board-empty" class="board__empty">
+            Nenhum agendamento ainda. Preencha a ordem de serviço ao lado para começar.
+          </div>
+
+          <div id="board-list" class="board__list">
+            <!-- linhas de vistoriador (template em js/app.js) serão inseridas aqui -->
+          </div>
+        </section>
  
     </main>
  
@@ -161,7 +164,7 @@
      <span> | </span>
      <span>Versão 1.0</span>
      <span> | </span>
-     <span>Desenvolvido por <a href="https://www.linkedin.com/in/marcioHUNK" target="_blank" rel="noopener noreferrer">Márcio Carvalho</a></span>
+     <span>Desenvolvido por <a class="footer__link" href="https://www.linkedin.com/in/marcioHUNK" target="_blank" rel="noopener noreferrer">Márcio Carvalho</a></span>
      </div>
   
 </body>
