@@ -48,7 +48,8 @@ import {
     doc,
     deleteDoc,
     updateDoc,
-    onSnapshot
+    onSnapshot,
+    getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
     getAuth,
@@ -72,15 +73,9 @@ const auth = getAuth(firebaseApp);
 const agendamentosRef = collection(db, "agendamentos");
 
 // ---------- BANCO ----------
-// "agendamentos" é um espelho local dos dados do Firestore, atualizado
-// automaticamente em tempo real sempre que qualquer pessoa (em qualquer
-// dispositivo) cria, edita ou remove um agendamento.
 let agendamentos = [];
 
 // ---------- ESTADO DO MURAL ----------
-// vistoriadorAberto: guarda qual card deve continuar expandido entre
-// re-renders (o board inteiro é reconstruído a cada onSnapshot).
-// mostrarTodos: alterna entre ver só vistorias ativas ou tudo.
 let vistoriadorAberto = null;
 let mostrarTodos = false;
 const STATUS_ATIVOS = ["A Inicar", "Em Execução"];
@@ -256,9 +251,21 @@ async function cadastrarAgendamento(e) {
 
         fim,
 
-        criadoPor: auth.currentUser ? formatarNomeDoEmail(auth.currentUser.email) : "Desconhecido"
+        criadoPor: auth.currentUser ? formatarNomeDoEmail(auth.currentUser.email) : "Desconhecido",
 
-};
+        // NOVO: histórico de status
+         statusHistorico: [
+        { status: "A Inicar", data: new Date().toISOString(), alteradoPor: auth.currentUser ? formatarNomeDoEmail(auth.currentUser.email) : "Desconhecido" }
+         ],
+         ultimaAlteracao: new Date().toISOString(),
+         ultimoAlteradoPor: auth.currentUser ? formatarNomeDoEmail(auth.currentUser.email) : "Desconhecido"
+    };
+
+    // Retorna o nome do usuário atual ou "Desconhecido"
+    function getUsuarioAtual() {
+    if (!auth.currentUser) return "Desconhecido";
+    return formatarNomeDoEmail(auth.currentUser.email);
+}
 
     const conflito = verificarConflito(novo);
 
@@ -567,16 +574,59 @@ function criarAgendamento(item) {
     const colDesenho = document.createElement("div");
     colDesenho.className = "agenda-item__col";
 
+    const desenhoWrapper = document.createElement("div");
+    desenhoWrapper.style.display = "flex";
+    desenhoWrapper.style.alignItems = "center";
+    desenhoWrapper.style.gap = "8px";
+
     const desenho = document.createElement("p");
+    desenho.style.margin = "0";
     const desenhoUrl = item.desenhoCarregamento ? item.desenhoCarregamento.replace(/"/g, "") : "";
     desenho.innerHTML = desenhoUrl
         ? `<strong>Desenho de carregamento:</strong><br><a class="agenda-item__link" href="${desenhoUrl}" target="_blank" rel="noopener noreferrer">abrir desenho</a>`
         : "<strong>Desenho de carregamento:</strong><br>Não informado";
 
+    // 🔥 BOTÃO PARA ALTERAR DESENHO (NOVO)
+    const btnAlterarDesenho = document.createElement("button");
+    btnAlterarDesenho.type = "button";
+    btnAlterarDesenho.textContent = "✏️";
+    btnAlterarDesenho.style.cssText = `
+        background: rgba(244, 240, 230, 0.1);
+        border: 1px solid rgba(244, 240, 230, 0.2);
+        border-radius: 3px;
+        color: var(--paper);
+        cursor: pointer;
+        padding: 2px 6px;
+        font-size: 14px;
+        transition: background 0.2s;
+        line-height: 1;
+    `;
+    btnAlterarDesenho.title = "Alterar link do desenho";
+
+    btnAlterarDesenho.addEventListener("mouseenter", () => {
+        btnAlterarDesenho.style.background = "rgba(244, 240, 230, 0.2)";
+    });
+    btnAlterarDesenho.addEventListener("mouseleave", () => {
+        btnAlterarDesenho.style.background = "rgba(244, 240, 230, 0.1)";
+    });
+
+    btnAlterarDesenho.addEventListener("click", () => {
+        const novoLink = prompt("Digite o novo link do desenho de carregamento:", desenhoUrl || "");
+        if (novoLink !== null) {
+            const linkLimpo = novoLink.trim();
+            atualizarAgendamento(item.id, { desenhoCarregamento: linkLimpo });
+            item.desenhoCarregamento = linkLimpo;
+            renderizarBoard(); // Re-renderiza para mostrar o novo link
+        }
+    });
+
+    desenhoWrapper.appendChild(desenho);
+    desenhoWrapper.appendChild(btnAlterarDesenho);
+
     const ultimaLocalizacao = document.createElement("p");
     ultimaLocalizacao.innerHTML = "<strong>Última localização:</strong><br>Carregando...";
 
-    colDesenho.appendChild(desenho);
+    colDesenho.appendChild(desenhoWrapper);
     colDesenho.appendChild(ultimaLocalizacao);
 
     const colObservacoes = document.createElement("div");
@@ -608,14 +658,25 @@ function criarAgendamento(item) {
         ${formatarData(item.fim)}
     `;
 
+    // 🔥 NOVO: Exibir data da última alteração de status
+    let statusHistoricoHtml = "";
+    if (item.statusHistorico && item.statusHistorico.length > 0) {
+        const ultimo = item.statusHistorico[item.statusHistorico.length - 1];
+        statusHistoricoHtml = `
+            <p style="font-size: 10px; color: rgba(244, 240, 230, 0.5); margin-top: 4px;">
+                ⏱️ ${formatarDataHora(ultimo.data)}
+            </p>
+        `;
+    }
+
     const botoes = document.createElement("div");
     botoes.className = "agenda-actions";
 
-    const criador = document.createElement("span");        // NOVO
-    criador.className = "agenda-item__criador";             // NOVO
-    criador.textContent = item.criadoPor                    // NOVO
-    ? `Agendado por: ${item.criadoPor}`                  // NOVO
-    : "Agendado por: —";                                 // NOVO
+    const criador = document.createElement("span");
+    criador.className = "agenda-item__criador";
+    criador.textContent = item.criadoPor
+        ? `Agendado por: ${item.criadoPor}`
+        : "Agendado por: —";
 
     const excluir = document.createElement("button");
     excluir.type = "button";
@@ -645,6 +706,9 @@ function criarAgendamento(item) {
     content.appendChild(periodo);
     content.appendChild(botoes);
 
+    // =============================================
+    // STATUS COLUMN (com trava para Finalizado)
+    // =============================================
     const statusColumn = document.createElement("aside");
     statusColumn.className = "agenda-item__status-column";
 
@@ -657,6 +721,15 @@ function criarAgendamento(item) {
 
     const statusSelect = document.createElement("select");
     statusSelect.className = "agenda-item__status-select";
+
+    // 🔥 TRAVAR CARD FINALIZADO
+    const isFinalizado = item.status === "Finalizado";
+    if (isFinalizado) {
+        statusSelect.disabled = true;
+        statusSelect.style.opacity = "0.6";
+        statusSelect.style.cursor = "not-allowed";
+    }
+
     statusSelect.innerHTML = `
         <option value="A Inicar" ${item.status === "A Inicar" ? "selected" : ""}>A Inicar</option>
         <option value="Finalizado" ${item.status === "Finalizado" ? "selected" : ""}>Finalizado</option>
@@ -665,9 +738,16 @@ function criarAgendamento(item) {
         <option value="Interrompido" ${item.status === "Interrompido" ? "selected" : ""}>Interrompido</option>
     `;
 
+    // Mostrar aviso se estiver finalizado
     const statusHint = document.createElement("div");
     statusHint.className = "agenda-item__status-hint";
-//statusHint.textContent = "Atualize conforme o andamento da vistoria.";
+    if (isFinalizado) {
+        statusHint.textContent = "🔒 Agendamento finalizado - não pode ser alterado";
+        statusHint.style.color = "#ff6b6b";
+        statusHint.style.fontWeight = "bold";
+    } else {
+        statusHint.textContent = "Atualize conforme o andamento da vistoria.";
+    }
 
     const motivoWrapper = document.createElement("div");
     motivoWrapper.className = "agenda-item__status-editor";
@@ -681,23 +761,81 @@ function criarAgendamento(item) {
     motivoInput.value = item.motivo || "";
     motivoInput.placeholder = "Descreva o motivo";
     motivoInput.hidden = !["Finalizado", "Cancelado", "Interrompido"].includes(item.status || "A Inicar");
+    if (isFinalizado) {
+        motivoInput.disabled = true;
+        motivoInput.style.opacity = "0.6";
+        motivoInput.style.cursor = "not-allowed";
+    }
 
     motivoInput.addEventListener("change", () => {
-        item.motivo = motivoInput.value.trim();
-        atualizarAgendamento(item.id, { motivo: item.motivo });
+        if (!isFinalizado) {
+            item.motivo = motivoInput.value.trim();
+            atualizarAgendamento(item.id, { motivo: item.motivo });
+        }
     });
 
+    // =============================================
+    // EVENTO DE MUDANÇA DE STATUS (com registro de data)
+    // =============================================
     statusSelect.addEventListener("change", () => {
-        item.status = statusSelect.value;
+        // 🔥 TRAVA: não permite mudar se já estiver Finalizado
+        if (item.status === "Finalizado") {
+            statusSelect.value = "Finalizado";
+            alert("Este agendamento já foi finalizado e não pode ser alterado.");
+            return;
+        }
 
-        if (!["Finalizado", "Cancelado", "Interrompido"].includes(item.status)) {
+        const novoStatus = statusSelect.value;
+        const dataAlteracao = new Date().toISOString();
+
+        // Atualiza histórico
+        const historicoAtual = item.statusHistorico || [];
+        historicoAtual.push({ status: novoStatus, data: dataAlteracao });
+
+        item.status = novoStatus;
+        item.statusHistorico = historicoAtual;
+        item.ultimaAlteracao = dataAlteracao;
+
+        // Limpa motivo se não for um status de encerramento
+        if (!["Finalizado", "Cancelado", "Interrompido"].includes(novoStatus)) {
             item.motivo = "";
             motivoInput.value = "";
         }
 
-        motivoInput.hidden = !["Finalizado", "Cancelado", "Interrompido"].includes(item.status);
-        atualizarAgendamento(item.id, { status: item.status, motivo: item.motivo });
+        motivoInput.hidden = !["Finalizado", "Cancelado", "Interrompido"].includes(novoStatus);
+        
+        // Atualiza no Firestore
+        atualizarAgendamento(item.id, { 
+            status: item.status, 
+            motivo: item.motivo,
+            statusHistorico: item.statusHistorico,
+            ultimaAlteracao: item.ultimaAlteracao
+        });
+
+        // Se o novo status for Finalizado, trava o select
+        if (novoStatus === "Finalizado") {
+            statusSelect.disabled = true;
+            statusSelect.style.opacity = "0.6";
+            statusSelect.style.cursor = "not-allowed";
+            statusHint.textContent = "🔒 Agendamento finalizado - não pode ser alterado";
+            statusHint.style.color = "#ff6b6b";
+            statusHint.style.fontWeight = "bold";
+            motivoInput.disabled = true;
+            motivoInput.style.opacity = "0.6";
+            motivoInput.style.cursor = "not-allowed";
+        }
+
+        // Re-renderiza para mostrar a data da alteração
+        renderizarBoard();
     });
+
+    // Adiciona a data da última alteração
+    if (item.ultimaAlteracao) {
+        const dataAlteracaoEl = document.createElement("p");
+        dataAlteracaoEl.style.cssText = "font-size: 10px; color: rgba(244, 240, 230, 0.5); margin-top: 8px;";
+        dataAlteracaoEl.textContent = `🔄 Última alteração: ${formatarDataHora(item.ultimaAlteracao)}`;
+        statusEditor.appendChild(dataAlteracaoEl);
+    }
 
     statusEditor.appendChild(statusLabel);
     statusEditor.appendChild(statusSelect);
@@ -1003,6 +1141,25 @@ async function carregarUltimaLocalizacao(item, elemento) {
 
 }
 
+// =====================================
+// NOVA FUNÇÃO: formatarDataHora
+// =====================================
+function formatarDataHora(dataISO) {
+    if (!dataISO) return "—";
+    try {
+        const data = new Date(dataISO);
+        return data.toLocaleString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+        });
+    } catch {
+        return "—";
+    }
+}
+
 function gerarRelatorio() {
 
     if (agendamentos.length === 0) {
@@ -1022,7 +1179,8 @@ function gerarRelatorio() {
         "Status",
         "Motivo",
         "Observações",
-        "Agendado por"
+        "Agendado por",
+        "Última alteração"  // NOVO
     ];
 
     const linhas = agendamentos.map(item => [
@@ -1035,7 +1193,8 @@ function gerarRelatorio() {
         item.status,
         item.motivo || "",
         item.observacoes || "",
-        item.criadoPor || ""
+        item.criadoPor || "",
+        item.ultimaAlteracao ? formatarDataHora(item.ultimaAlteracao) : ""  // NOVO
     ]);
 
     const escaparCampo = (valor) => {
@@ -1056,7 +1215,6 @@ function gerarRelatorio() {
         .map(linha => linha.map(escaparCampo).join(","))
         .join("\n");
 
-    // BOM no início ajuda o Excel a reconhecer acentuação corretamente
     const blobCSV = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blobCSV);
 
@@ -1181,6 +1339,88 @@ observer.observe(board, {
     subtree: true
 
 });
+
+// ----------TESTE------------------
+// =====================================
+// SCRIPT DE MIGRAÇÃO - Execute UMA VEZ
+// =====================================
+// 🔥 ATENÇÃO: Depois de executar, remova ou comente este bloco!
+
+// DESCOMENTE A LINHA ABAIXO PARA EXECUTAR A MIGRAÇÃO
+// executarMigracao();
+
+/*async function executarMigracao() {
+    try {
+        console.log("🔄 Verificando agendamentos para migrar...");
+        
+        const snapshot = await getDocs(agendamentosRef);
+        let contador = 0;
+        
+        for (const docSnap of snapshot.docs) {
+            const data = docSnap.data();
+            
+            if (!data.statusHistorico) {
+                await updateDoc(docSnap.ref, {
+                    statusHistorico: [{ 
+                        status: data.status || "A Inicar", 
+                        data: new Date().toISOString() 
+                    }],
+                    ultimaAlteracao: new Date().toISOString()
+                });
+                contador++;
+                console.log(`✅ ${contador} - "${data.cliente}" (${data.vistoriador}) migrado`);
+            }
+        }
+        
+        if (contador === 0) {
+            console.log("✅ Todos os agendamentos já estão migrados!");
+        } else {
+            console.log(`🎉 Migração concluída! ${contador} agendamento(s) atualizado(s).`);
+        }
+        
+    } catch (erro) {
+        console.error("❌ Erro na migração:", erro);
+    }
+}
+*/
+
+// =============================================
+// MIGRAÇÃO AUTOMÁTICA - EXECUTA APENAS UMA VEZ
+// =============================================
+async function migrarCamposFaltantes() {
+    try {
+        console.log("🔍 Verificando agendamentos...");
+        const snapshot = await getDocs(agendamentosRef);
+        let contador = 0;
+        
+        for (const docSnap of snapshot.docs) {
+            const data = docSnap.data();
+            if (!data.statusHistorico) {
+                await updateDoc(docSnap.ref, {
+                    statusHistorico: [{ 
+                        status: data.status || "A Inicar", 
+                        data: new Date().toISOString() 
+                    }],
+                    ultimaAlteracao: new Date().toISOString()
+                });
+                contador++;
+                console.log(`✅ "${data.cliente}" atualizado`);
+            }
+        }
+        
+        if (contador === 0) {
+            console.log("✅ Todos os agendamentos já estão atualizados!");
+        } else {
+            console.log(`🎉 ${contador} agendamento(s) atualizado(s)!`);
+        }
+    } catch (erro) {
+        console.error("❌ Erro na migração:", erro);
+    }
+}
+
+// Executa automaticamente 3 segundos após o login
+setTimeout(migrarCamposFaltantes, 3000);
+
 
 // ---------- INICIALIZAÇÃO ----------
 
