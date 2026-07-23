@@ -253,19 +253,16 @@ async function cadastrarAgendamento(e) {
 
         criadoPor: auth.currentUser ? formatarNomeDoEmail(auth.currentUser.email) : "Desconhecido",
 
-        // NOVO: histórico de status
-         statusHistorico: [
+        statusHistorico: [
         { status: "A Inicar", data: new Date().toISOString(), alteradoPor: auth.currentUser ? formatarNomeDoEmail(auth.currentUser.email) : "Desconhecido" }
          ],
          ultimaAlteracao: new Date().toISOString(),
          ultimoAlteradoPor: auth.currentUser ? formatarNomeDoEmail(auth.currentUser.email) : "Desconhecido"
     };
 
-
-
     const conflito = verificarConflito(novo);
 
-    if (conflito && !statusLiberaAgenda(status)) {
+    if (conflito) {
 
         mostrarErro(
 
@@ -298,8 +295,8 @@ entre ${formatarData(conflito.inicio)} e ${formatarData(conflito.fim)}.`
 
 }
 
-    // Retorna o nome do usuário atual ou "Desconhecido"
-    function getUsuarioAtual() {
+// Retorna o nome do usuário atual ou "Desconhecido"
+function getUsuarioAtual() {
     if (!auth.currentUser) return "Desconhecido";
     return formatarNomeDoEmail(auth.currentUser.email);
 }
@@ -353,49 +350,37 @@ function extrairRota() {
 }
 
 // =====================================
-// VERIFICAR CONFLITO
+// VERIFICAR CONFLITO - MODIFICADO
 // =====================================
 
 function verificarConflito(novo) {
-
+    // Se o status for Finalizado, Cancelado ou Interrompido, libera a agenda
     if (statusLiberaAgenda(novo.status)) {
-
         return null;
-
     }
 
     const inicioNovo = new Date(novo.inicio);
-
     const fimNovo = new Date(novo.fim);
 
     return agendamentos.find(item => {
-
-        if (
-
-            item.vistoriador.toLowerCase() !==
-
-            novo.vistoriador.toLowerCase()
-
-        ) {
-
+        // Verifica se é o mesmo vistoriador
+        if (item.vistoriador.toLowerCase() !== novo.vistoriador.toLowerCase()) {
             return false;
+        }
 
+        // 🔥 NOVO: Se o agendamento existente estiver FINALIZADO, não bloqueia
+        if (item.status === "Finalizado") {
+            return false;
         }
 
         const inicioExistente = new Date(item.inicio);
-
         const fimExistente = new Date(item.fim);
 
         return (
-
             inicioNovo <= fimExistente &&
-
             fimNovo >= inicioExistente
-
         );
-
     });
-
 }
 
 // =====================================
@@ -528,11 +513,10 @@ function criarCardVistoriador(nome, lista) {
 }
 
 // =====================================
-// ITEM DO AGENDAMENTO
+// ITEM DO AGENDAMENTO - MODIFICADO
 // =====================================
 
 function criarAgendamento(item) {
-
     const card = document.createElement("article");
     card.className = "agenda-item";
 
@@ -588,7 +572,6 @@ function criarAgendamento(item) {
         ? `<strong>Desenho de carregamento:</strong><br><a class="agenda-item__link" href="${desenhoUrl}" target="_blank" rel="noopener noreferrer">abrir desenho</a>`
         : "<strong>Desenho de carregamento:</strong><br>Não informado";
 
-    // 🔥 BOTÃO PARA ALTERAR DESENHO (NOVO)
     const btnAlterarDesenho = document.createElement("button");
     btnAlterarDesenho.type = "button";
     btnAlterarDesenho.textContent = "✏️";
@@ -618,7 +601,7 @@ function criarAgendamento(item) {
             const linkLimpo = novoLink.trim();
             atualizarAgendamento(item.id, { desenhoCarregamento: linkLimpo });
             item.desenhoCarregamento = linkLimpo;
-            renderizarBoard(); // Re-renderiza para mostrar o novo link
+            renderizarBoard();
         }
     });
 
@@ -643,10 +626,8 @@ function criarAgendamento(item) {
     observacoesInput.placeholder = "Adicione detalhes adicionais";
 
     observacoesInput.addEventListener("change", () => {
-
         item.observacoes = observacoesInput.value;
         atualizarAgendamento(item.id, { observacoes: item.observacoes });
-
     });
 
     colObservacoes.appendChild(observacoesTitulo);
@@ -660,7 +641,7 @@ function criarAgendamento(item) {
         ${formatarData(item.fim)}
     `;
 
-    // 🔥 NOVO: Exibir data da última alteração de status
+    // Status histórico
     let statusHistoricoHtml = "";
     if (item.statusHistorico && item.statusHistorico.length > 0) {
         const ultimo = item.statusHistorico[item.statusHistorico.length - 1];
@@ -685,15 +666,10 @@ function criarAgendamento(item) {
     excluir.textContent = "Excluir";
 
     excluir.addEventListener("click", () => {
-
         if (!confirm("Deseja excluir este agendamento?")) {
-
             return;
-
         }
-
         removerAgendamento(item.id);
-
     });
 
     botoes.appendChild(criador);
@@ -709,7 +685,7 @@ function criarAgendamento(item) {
     content.appendChild(botoes);
 
     // =============================================
-    // STATUS COLUMN (com trava para Finalizado)
+    // STATUS COLUMN (MODIFICADA)
     // =============================================
     const statusColumn = document.createElement("aside");
     statusColumn.className = "agenda-item__status-column";
@@ -724,7 +700,6 @@ function criarAgendamento(item) {
     const statusSelect = document.createElement("select");
     statusSelect.className = "agenda-item__status-select";
 
-    // 🔥 TRAVAR CARD FINALIZADO
     const isFinalizado = item.status === "Finalizado";
     if (isFinalizado) {
         statusSelect.disabled = true;
@@ -740,24 +715,16 @@ function criarAgendamento(item) {
         <option value="Interrompido" ${item.status === "Interrompido" ? "selected" : ""}>Interrompido</option>
     `;
 
-    // Mostrar aviso se estiver finalizado
     const statusHint = document.createElement("div");
     statusHint.className = "agenda-item__status-hint";
-    if (isFinalizado) {
-        statusHint.textContent = "🔒 Agendamento finalizado - não pode ser alterado";
-        statusHint.style.color = "#ff6b6b";
-        statusHint.style.fontWeight = "bold";
-    } else {
-        statusHint.textContent = "Atualize conforme o andamento da vistoria.";
-    }
 
     // Mostra quem finalizou (se aplicável)
-if (item.status === "Finalizado" && item.ultimoAlteradoPor) {
-    const finalizadoPor = document.createElement("p");
-    finalizadoPor.style.cssText = "font-size: 11px; color: #4CAF50; margin-top: 4px; font-weight: 500;";
-    finalizadoPor.textContent = `✅ Finalizado por: ${item.ultimoAlteradoPor}`;
-    statusEditor.appendChild(finalizadoPor);
-}
+    if (item.status === "Finalizado" && item.ultimoAlteradoPor) {
+        const finalizadoPor = document.createElement("p");
+        finalizadoPor.style.cssText = "font-size: 11px; color: #4CAF50; margin-top: 4px; font-weight: 500;";
+        finalizadoPor.textContent = `✅ Finalizado por: ${item.ultimoAlteradoPor}`;
+        statusEditor.appendChild(finalizadoPor);
+    }
 
     const motivoWrapper = document.createElement("div");
     motivoWrapper.className = "agenda-item__status-editor";
@@ -770,11 +737,27 @@ if (item.status === "Finalizado" && item.ultimoAlteradoPor) {
     motivoInput.className = "agenda-item__textarea agenda-item__textarea--compact";
     motivoInput.value = item.motivo || "";
     motivoInput.placeholder = "Descreva o motivo";
-    motivoInput.hidden = !["Finalizado", "Cancelado", "Interrompido"].includes(item.status || "A Inicar");
+
+    // 🔥 NOVO: Verifica se deve mostrar o motivo (Em Execução ou status de encerramento)
+    const isEmExecucao = item.status === "Em Execução";
+    const isEncerramento = ["Finalizado", "Cancelado", "Interrompido"].includes(item.status || "A Inicar");
+    const motivoVisivel = isEmExecucao || isEncerramento;
+    motivoInput.hidden = !motivoVisivel;
+
     if (isFinalizado) {
         motivoInput.disabled = true;
         motivoInput.style.opacity = "0.6";
         motivoInput.style.cursor = "not-allowed";
+        statusHint.textContent = "🔒 Agendamento finalizado - não pode ser alterado";
+        statusHint.style.color = "#ff6b6b";
+        statusHint.style.fontWeight = "bold";
+    } else {
+        statusHint.textContent = "Atualize conforme o andamento da vistoria.";
+        statusHint.style.color = "rgba(244, 240, 230, 0.72)";
+        statusHint.style.fontWeight = "normal";
+        motivoInput.disabled = false;
+        motivoInput.style.opacity = "1";
+        motivoInput.style.cursor = "text";
     }
 
     motivoInput.addEventListener("change", () => {
@@ -785,77 +768,91 @@ if (item.status === "Finalizado" && item.ultimoAlteradoPor) {
     });
 
     // =============================================
-    // EVENTO DE MUDANÇA DE STATUS (com registro de data)
+    // EVENTO DE MUDANÇA DE STATUS (MODIFICADO)
     // =============================================
     statusSelect.addEventListener("change", () => {
-    // 🔥 TRAVA: não permite mudar se já estiver Finalizado
-    if (item.status === "Finalizado") {
-        statusSelect.value = "Finalizado";
-        alert("Este agendamento já foi finalizado e não pode ser alterado.");
-        return;
-    }
+        // 🔥 TRAVA: não permite mudar se já estiver Finalizado
+        if (item.status === "Finalizado") {
+            statusSelect.value = "Finalizado";
+            alert("Este agendamento já foi finalizado e não pode ser alterado.");
+            return;
+        }
 
-    const novoStatus = statusSelect.value;
-    const dataAlteracao = new Date().toISOString();
-    const usuarioAtual = getUsuarioAtual();
+        const novoStatus = statusSelect.value;
+        const dataAlteracao = new Date().toISOString();
+        const usuarioAtual = getUsuarioAtual();
 
-    // Atualiza histórico com o nome de quem alterou
-    const historicoAtual = item.statusHistorico || [];
-    historicoAtual.push({ 
-        status: novoStatus, 
-        data: dataAlteracao,
-        alteradoPor: usuarioAtual
+        // Atualiza histórico
+        const historicoAtual = item.statusHistorico || [];
+        historicoAtual.push({ 
+            status: novoStatus, 
+            data: dataAlteracao,
+            alteradoPor: usuarioAtual
+        });
+
+        item.status = novoStatus;
+        item.statusHistorico = historicoAtual;
+        item.ultimaAlteracao = dataAlteracao;
+        item.ultimoAlteradoPor = usuarioAtual;
+
+        // Limpa motivo se não for Em Execução ou status de encerramento
+        if (!["Em Execução", "Finalizado", "Cancelado", "Interrompido"].includes(novoStatus)) {
+            item.motivo = "";
+            motivoInput.value = "";
+        }
+
+        // 🔥 NOVO: Atualiza visibilidade do motivo baseado no novo status
+        const novoIsEmExecucao = novoStatus === "Em Execução";
+        const novoIsEncerramento = ["Finalizado", "Cancelado", "Interrompido"].includes(novoStatus);
+        const novoMotivoVisivel = novoIsEmExecucao || novoIsEncerramento;
+        motivoInput.hidden = !novoMotivoVisivel;
+
+        // Atualiza no Firestore
+        atualizarAgendamento(item.id, { 
+            status: item.status, 
+            motivo: item.motivo,
+            statusHistorico: item.statusHistorico,
+            ultimaAlteracao: item.ultimaAlteracao,
+            ultimoAlteradoPor: item.ultimoAlteradoPor
+        });
+
+        // Se o novo status for Finalizado, trava o select
+        if (novoStatus === "Finalizado") {
+            statusSelect.disabled = true;
+            statusSelect.style.opacity = "0.6";
+            statusSelect.style.cursor = "not-allowed";
+            statusHint.textContent = "🔒 Agendamento finalizado - não pode ser alterado";
+            statusHint.style.color = "#ff6b6b";
+            statusHint.style.fontWeight = "bold";
+            motivoInput.disabled = true;
+            motivoInput.style.opacity = "0.6";
+            motivoInput.style.cursor = "not-allowed";
+        } else {
+            // Desbloqueia select e motivo
+            statusSelect.disabled = false;
+            statusSelect.style.opacity = "1";
+            statusSelect.style.cursor = "pointer";
+            statusHint.textContent = "Atualize conforme o andamento da vistoria.";
+            statusHint.style.color = "rgba(244, 240, 230, 0.72)";
+            statusHint.style.fontWeight = "normal";
+            motivoInput.disabled = false;
+            motivoInput.style.opacity = "1";
+            motivoInput.style.cursor = "text";
+        }
+
+        // Re-renderiza para mostrar a data da alteração
+        renderizarBoard();
     });
-
-    item.status = novoStatus;
-    item.statusHistorico = historicoAtual;
-    item.ultimaAlteracao = dataAlteracao;
-    item.ultimoAlteradoPor = usuarioAtual;
-
-    // Limpa motivo se não for um status de encerramento
-    if (!["Finalizado", "Cancelado", "Interrompido"].includes(novoStatus)) {
-        item.motivo = "";
-        motivoInput.value = "";
-    }
-
-    motivoInput.hidden = !["Finalizado", "Cancelado", "Interrompido"].includes(novoStatus);
-    
-    // Atualiza no Firestore
-    atualizarAgendamento(item.id, { 
-        status: item.status, 
-        motivo: item.motivo,
-        statusHistorico: item.statusHistorico,
-        ultimaAlteracao: item.ultimaAlteracao,
-        ultimoAlteradoPor: item.ultimoAlteradoPor
-    });
-
-    // Se o novo status for Finalizado, trava o select
-    if (novoStatus === "Finalizado") {
-        statusSelect.disabled = true;
-        statusSelect.style.opacity = "0.6";
-        statusSelect.style.cursor = "not-allowed";
-        statusHint.textContent = "🔒 Agendamento finalizado - não pode ser alterado";
-        statusHint.style.color = "#ff6b6b";
-        statusHint.style.fontWeight = "bold";
-        motivoInput.disabled = true;
-        motivoInput.style.opacity = "0.6";
-        motivoInput.style.cursor = "not-allowed";
-    }
-
-    // Re-renderiza para mostrar a data da alteração
-    renderizarBoard();
-});
-
 
     // Adiciona a data da última alteração com quem alterou
-if (item.ultimaAlteracao) {
-    const dataAlteracaoEl = document.createElement("p");
-    dataAlteracaoEl.style.cssText = "font-size: 10px; color: rgba(244, 240, 230, 0.5); margin-top: 8px;";
-    
-    const alteradoPor = item.ultimoAlteradoPor || "—";
-    dataAlteracaoEl.textContent = `🔄 Última alteração: ${formatarDataHora(item.ultimaAlteracao)} por ${alteradoPor}`;
-    statusEditor.appendChild(dataAlteracaoEl);
-}
+    if (item.ultimaAlteracao) {
+        const dataAlteracaoEl = document.createElement("p");
+        dataAlteracaoEl.style.cssText = "font-size: 10px; color: rgba(244, 240, 230, 0.5); margin-top: 8px;";
+        
+        const alteradoPor = item.ultimoAlteradoPor || "—";
+        dataAlteracaoEl.textContent = `🔄 Última alteração: ${formatarDataHora(item.ultimaAlteracao)} por ${alteradoPor}`;
+        statusEditor.appendChild(dataAlteracaoEl);
+    }
 
     statusEditor.appendChild(statusLabel);
     statusEditor.appendChild(statusSelect);
@@ -870,17 +867,12 @@ if (item.ultimaAlteracao) {
     card.appendChild(statusColumn);
 
     if (item.planilhaLocalizacao) {
-
         carregarUltimaLocalizacao(item, ultimaLocalizacao);
-
     } else {
-
         ultimaLocalizacao.innerHTML = "<strong>Última localização:</strong><br>Não informada";
-
     }
 
     return card;
-
 }
 
 // =====================================
@@ -1201,7 +1193,7 @@ function gerarRelatorio() {
     "Observações",
     "Agendado por",
     "Última alteração",
-    "Alterado por"  // NOVO
+    "Alterado por"
 ];
 
 const linhas = agendamentos.map(item => [
@@ -1216,7 +1208,7 @@ const linhas = agendamentos.map(item => [
     item.observacoes || "",
     item.criadoPor || "",
     item.ultimaAlteracao ? formatarDataHora(item.ultimaAlteracao) : "",
-    item.ultimoAlteradoPor || ""  // NOVO
+    item.ultimoAlteradoPor || ""
 ]);
 
     const escaparCampo = (valor) => {
@@ -1362,53 +1354,6 @@ observer.observe(board, {
 
 });
 
-// ----------TESTE------------------
-// =====================================
-// SCRIPT DE MIGRAÇÃO - Execute UMA VEZ
-// =====================================
-// 🔥 ATENÇÃO: Depois de executar, remova ou comente este bloco!
-
-// DESCOMENTE A LINHA ABAIXO PARA EXECUTAR A MIGRAÇÃO
-// executarMigracao();
-
-/*async function executarMigracao() {
-    try {
-        console.log("🔄 Verificando agendamentos para migrar...");
-        
-        const snapshot = await getDocs(agendamentosRef);
-        let contador = 0;
-        
-        for (const docSnap of snapshot.docs) {
-            const data = docSnap.data();
-            
-            if (!data.statusHistorico) {
-                await updateDoc(docSnap.ref, {
-                    statusHistorico: [{ 
-                        status: data.status || "A Inicar", 
-                        data: new Date().toISOString() 
-                    }],
-                    ultimaAlteracao: new Date().toISOString()
-                });
-                contador++;
-                console.log(`✅ ${contador} - "${data.cliente}" (${data.vistoriador}) migrado`);
-            }
-        }
-        
-        if (contador === 0) {
-            console.log("✅ Todos os agendamentos já estão migrados!");
-        } else {
-            console.log(`🎉 Migração concluída! ${contador} agendamento(s) atualizado(s).`);
-        }
-        
-    } catch (erro) {
-        console.error("❌ Erro na migração:", erro);
-    }
-}
-*/
-
-// =============================================
-// MIGRAÇÃO AUTOMÁTICA - EXECUTA APENAS UMA VEZ
-// =============================================
 // =============================================
 // MIGRAÇÃO AUTOMÁTICA - EXECUTA APENAS UMA VEZ
 // =============================================
@@ -1452,7 +1397,6 @@ async function migrarCamposFaltantes() {
 
 // Executa automaticamente 3 segundos após o login
 setTimeout(migrarCamposFaltantes, 3000);
-
 
 // ---------- INICIALIZAÇÃO ----------
 
